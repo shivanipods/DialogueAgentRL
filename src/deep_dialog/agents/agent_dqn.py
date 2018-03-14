@@ -21,7 +21,8 @@ import numpy as np
 from deep_dialog import dialog_config
 
 from agent import Agent
-from deep_dialog.qlearning import DQN
+#from deep_dialog.qlearning import DQN
+from deep_dialog.qlearning import MultiLayerQNetwork as DQN
 
 
 
@@ -50,13 +51,15 @@ class AgentDQN(Agent):
         self.max_turn = params['max_turn'] + 4
         self.state_dimension = 2 * self.act_cardinality + 7 * self.slot_cardinality + 3 + self.max_turn
         
-        self.dqn = DQN(self.state_dimension, self.hidden_size, self.num_actions)
+        #self.dqn = DQN(self.state_dimension, self.hidden_size, self.num_actions)
+        self.dqn = DQN(self.state_dimension, self.hidden_size, self.hidden_size, self.num_actions)
         self.clone_dqn = copy.deepcopy(self.dqn)
         
         self.cur_bellman_err = 0
                 
         # Prediction Mode: load trained DQN model
         if params['trained_model_path'] != None:
+            # TODO: Fix Load model here
             self.dqn.model = copy.deepcopy(self.load_trained_DQN(params['trained_model_path']))
             self.clone_dqn = copy.deepcopy(self.dqn)
             self.predict_mode = True
@@ -176,7 +179,8 @@ class AgentDQN(Agent):
                     self.warm_start = 2
                 return self.rule_policy()
             else:
-                return self.dqn.predict(representation, {}, predict_model=True)
+                #return self.dqn.predict(representation, {}, predict_model=True)
+                return self.dqn(representation)
     
     def rule_policy(self):
         """ Rule Policy """
@@ -230,6 +234,7 @@ class AgentDQN(Agent):
             self.cur_bellman_err = 0
             for iter in range(len(self.experience_replay_pool)/(batch_size)):
                 batch = [random.choice(self.experience_replay_pool) for i in xrange(batch_size)]
+                # TODO: Add training for the dqn here
                 batch_struct = self.dqn.singleBatch(batch, {'gamma': self.gamma}, self.clone_dqn)
                 self.cur_bellman_err += batch_struct['cost']['total_cost']
             
