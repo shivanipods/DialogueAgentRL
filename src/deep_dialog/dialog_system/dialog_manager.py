@@ -44,7 +44,9 @@ class DialogManager:
         ########################################################################
         #   CALL AGENT TO TAKE HER TURN
         ########################################################################
-        self.state = self.state_tracker.get_state_for_agent()
+
+        # TODO: Add Pyotrch logic here?
+        self.state = self.state_tracker.get_state_for_agent() ## this code is tracking the dialogue state
         self.agent_action = self.agent.state_to_action(self.state)
         
         ########################################################################

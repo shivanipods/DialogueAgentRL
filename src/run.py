@@ -31,7 +31,7 @@ import argparse, json, copy, os
 import cPickle as pickle
 
 from deep_dialog.dialog_system import DialogManager, text_to_dict
-from deep_dialog.agents import AgentCmd, InformAgent, RequestAllAgent, RandomAgent, EchoAgent, RequestBasicsAgent, AgentDQN
+from deep_dialog.agents import AgentCmd, InformAgent, RequestAllAgent, RandomAgent, EchoAgent, RequestBasicsAgent, AgentDQN, AgentDQNTorch
 from deep_dialog.usersims import RuleSimulator
 
 from deep_dialog import dialog_config
@@ -157,7 +157,7 @@ agent_params['predict_mode'] = params['predict_mode']
 agent_params['trained_model_path'] = params['trained_model_path']
 agent_params['warm_start'] = params['warm_start']
 agent_params['cmd_input_mode'] = params['cmd_input_mode']
-
+## if there are additional agent parameters to be added for our implementation
 
 if agt == 0:
     agent = AgentCmd(movie_kb, act_set, slot_set, agent_params)
@@ -173,6 +173,8 @@ elif agt == 5:
     agent = RequestBasicsAgent(movie_kb, act_set, slot_set, agent_params)
 elif agt == 9:
     agent = AgentDQN(movie_kb, act_set, slot_set, agent_params)
+elif agt == 10:
+    agent = AgentDQNTorch(movie_kb, act_set, slot_set, agent_params)
     
 ################################################################################
 #    Add your agent here
@@ -266,6 +268,7 @@ def save_model(path, agt, success_rate, agent, best_epoch, cur_epoch):
     filepath = os.path.join(path, filename)
     checkpoint = {}
     if agt == 9: checkpoint['model'] = copy.deepcopy(agent.dqn.model)
+    if agt == 10: checkpoint['model'] = copy.deepcopy(agent.dqn)
     checkpoint['params'] = params
     try:
         pickle.dump(checkpoint, open(filepath, "wb"))
@@ -351,7 +354,7 @@ def run_episodes(count, status):
     cumulative_reward = 0
     cumulative_turns = 0
     
-    if agt == 9 and params['trained_model_path'] == None and warm_start == 1:
+    if agt == 9 or agt == 10 and params['trained_model_path'] == None and warm_start == 1:
         print ('warm_start starting ...')
         warm_start_simulation()
         print ('warm_start finished, start RL training ...')
@@ -374,7 +377,7 @@ def run_episodes(count, status):
                 cumulative_turns += dialog_manager.state_tracker.turn_count
         
         # simulation
-        if agt == 9 and params['trained_model_path'] == None:
+        if agt == 9 or agt == 10 and params['trained_model_path'] == None:
             agent.predict_mode = True
             simulation_res = simulation_epoch(simulation_epoch_size)
             
@@ -408,7 +411,7 @@ def run_episodes(count, status):
     status['successes'] += successes
     status['count'] += count
     
-    if agt == 9 and params['trained_model_path'] == None:
+    if agt == 9 or agt == 10 and params['trained_model_path'] == None:
         save_model(params['write_model_dir'], agt, float(successes)/count, best_model['model'], best_res['epoch'], count)
         save_performance_records(params['write_model_dir'], agt, performance_records)
     
