@@ -1,7 +1,7 @@
 import random, copy, json
 import cPickle as pickle
 import numpy as np
-
+from constants import *
 
 from deep_dialog import dialog_config
 from collections import deque
@@ -10,11 +10,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from collections import namedtuple
-from torch.autograd import Variable
+import ipdb
+#from torch.autograd import Variable
 
 from agent import Agent
 ## so you can remove extreeous agent information in the dqn-pytorch file
 from deep_dialog.qlearning.dqn_pytorch import MultiLayerQNetwork as DQN
+
 
 class Replay_Memory():
     def __init__(self, memory_size=1000, burn_in=200):
@@ -65,8 +67,12 @@ class AgentDQNTorch(Agent):
 
 		# default we use a 2-layer perceptron, thier code uses a 1 hidden layer
 		self.dqn = DQN(self.state_dimension, self.hidden_size, self.hidden_size, self.num_actions)
-		self.clone_dqn = copy.deepcopy(self.dqn)
-		self.transition = namedtuple('transition', ('state', 'action', 'reward', 'next_state', 'is_terminal'))
+                if use_cuda:
+                    self.dqn.cuda()
+                self.clone_dqn = copy.deepcopy(self.dqn)
+                if use_cuda:
+                    self.clone_dqn = self.clone_dqn.cuda()
+                self.transition = namedtuple('transition', ('state', 'action', 'reward', 'next_state', 'is_terminal'))
 
 		self.cur_bellman_err = 0
 
@@ -230,7 +236,7 @@ class AgentDQNTorch(Agent):
 		return None
 
 	def return_greedy_action(self, state_representation):
-		state_var = Variable(torch.FloatTensor(state_representation).unsqueeze(0))
+		state_var = variable(torch.FloatTensor(state_representation).unsqueeze(0))
 		if torch.cuda.is_available():
 			state_var = state_var.cuda()
 		qvalues = self.dqn(state_var)
@@ -256,22 +262,23 @@ class AgentDQNTorch(Agent):
 
 	def update_model_with_replay(self, batch, batch_size):
 		batch = self.transition(*zip(*batch))
-		state_batch = Variable(torch.FloatTensor(batch.state))
-		action_batch = Variable(torch.LongTensor(batch.action))
+		state_batch = variable(torch.FloatTensor(batch.state))
+		action_batch = variable(torch.LongTensor(batch.action))
 		if torch.cuda.is_available():
 			state_batch = state_batch.cuda()
 			action_batch = action_batch.cuda()
 		prediction = self.dqn(state_batch).gather(1, action_batch.view(batch_size, 1))
-		target = Variable(torch.zeros(batch_size))
-		next_state_batch = Variable(torch.FloatTensor(batch.next_state), volatile=True)
+		target = variable(torch.zeros(batch_size))
+		next_state_batch = variable(torch.FloatTensor(batch.next_state), volatile=True)
 		nqvalues = self.clone_dqn(next_state_batch)
 		nqvalues = nqvalues.max(1)[0]
 		nqvalues.volatile = False
 		for i in range(batch_size):
-			done = batch.is_terminal[i]
-			target[i] = batch.reward[i] + (1 - done) * self.gamma * nqvalues[i]
-		if torch.cuda.is_available():
-			target = target.cuda()
+			mask = torch.FloatTensor(batch.is_terminal)
+			reward = torch.FloatTensor(batch.reward)
+                        temp = self.gamma * nqvalues
+                        target = reward + temp.mul(variable((1 - mask),volatile=False))
+                ipdb.set_trace()
 		loss = self.loss_function(prediction, target)
 		self.optimizer.zero_grad()
 		loss.backward()
@@ -311,7 +318,7 @@ class AgentDQNTorch(Agent):
 				## they are also doing L2 regularization term apart from the MSE loss, always using the target qnetwork and -1e-3 gradient clipping
 				## thier learning rate is 0.001
 				mse_loss = self.update_model_with_replay(batch, batch_size)
-				self.cur_bellman_err += mse_loss.data.numpy().sum()
+				self.cur_bellman_err += mse_loss.data.cpu().numpy().sum()
 
 
 			print ("cur bellman err %.4f, experience replay pool %s" % (
