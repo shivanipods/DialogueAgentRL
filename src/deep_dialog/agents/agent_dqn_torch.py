@@ -16,6 +16,7 @@ from agent import Agent
 ## so you can remove extreeous agent information in the dqn-pytorch file
 from deep_dialog.qlearning.dqn_pytorch import MultiLayerQNetwork as DQN
 
+
 class Replay_Memory():
     def __init__(self, memory_size=1000, burn_in=200):
         self.memory_size = memory_size

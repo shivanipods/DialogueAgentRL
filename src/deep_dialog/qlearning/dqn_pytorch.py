@@ -44,6 +44,7 @@ class MultiLayerQNetwork(nn.Module):
 
 	def forward(self, input):
 		output = self.mlp_layer(input)
+
 		return output
 
 class Replay_Memory():
