@@ -7,6 +7,8 @@ draw a learning curve
 '''
 
 import argparse, json
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 
@@ -35,16 +37,18 @@ def load_performance_file(path):
             numbers['ave_rewards'].append(data['ave_reward'][str(key)])
     return numbers
 
-def draw_learning_curve(numbers):
+def draw_learning_curve(numbers, img_path):
     """ draw the learning curve """
     
+    fig = plt.figure()
     plt.xlabel('Simulation Epoch')
     plt.ylabel('Success Rate')
     plt.title('Learning Curve')
     plt.grid(True)
 
     plt.plot(numbers['x'], numbers['success_rate'], 'r', lw=1)
-    plt.show()
+    plt.savefig(img_path) 
+    #plt.show()
             
     
             
@@ -53,7 +57,7 @@ def main(params):
     
     if cmd == 0:
         numbers = load_performance_file(params['result_file'])
-        draw_learning_curve(numbers)
+        draw_learning_curve(numbers, params['img_path'])
     elif cmd == 1:
         read_performance_records(params['result_file'])
 
@@ -63,8 +67,12 @@ if __name__ == "__main__":
     
     parser.add_argument('--cmd', dest='cmd', type=int, default=1, help='cmd')
     
-    parser.add_argument('--result_file', dest='result_file', type=str, default='./deep_dialog/checkpoints/rl_agent/11142016/noe2e/agt_9_performance_records.json', help='path to the result file')
+    parser.add_argument('--result_file', dest='result_file', type=str, 
+            default='./deep_dialog/checkpoints/rl_agent/11142016/noe2e/agt_9_performance_records.json', 
+            help='path to the result file')
     
+    parser.add_argument('--img_path', dest='img_path', type=str, 
+            help='path to the result image file')
     args = parser.parse_args()
     params = vars(args)
     print json.dumps(params, indent=2)
