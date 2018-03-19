@@ -239,9 +239,7 @@ class AgentDQNBoltzmann(Agent):
 		if torch.cuda.is_available():
 			state_var = state_var.cuda()
 		qvalues = self.dqn(state_var)
-		#ipdb.set_trace()
                 if self.boltzmann:
-                    ipdb.set_trace()
                     probs = F.softmax(qvalues).cpu().data.numpy()
                     action = np.random.choice(
                             range(self.num_actions),1, p=probs[0])
