@@ -274,11 +274,12 @@ class AgentDQNTorch(Agent):
 		nqvalues = nqvalues.max(1)[0]
 		nqvalues.volatile = False
 		for i in range(batch_size):
-			mask = torch.FloatTensor(batch.is_terminal)
-			reward = torch.FloatTensor(batch.reward)
-                        temp = self.gamma * nqvalues
-                        target = reward + temp.mul(variable((1 - mask),volatile=False))
-                ipdb.set_trace()
+		    mask = torch.FloatTensor(batch.is_terminal)
+		    reward = torch.FloatTensor(batch.reward)
+                    temp = self.gamma * nqvalues
+                    #ipdb.set_trace()
+                    target = variable(reward, volatile=False) + temp.mul(
+                            variable(1 - mask,volatile=False))
 		loss = self.loss_function(prediction, target)
 		self.optimizer.zero_grad()
 		loss.backward()
