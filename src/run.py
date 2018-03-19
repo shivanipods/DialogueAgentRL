@@ -356,7 +356,7 @@ def run_episodes(count, status):
     cumulative_reward = 0
     cumulative_turns = 0
     
-    if agt == 9 or agt == 10 and params['trained_model_path'] == None and warm_start == 1:
+    if agt == 9 or agt == 10 or agt == 11 and params['trained_model_path'] == None and warm_start == 1:
         print ('warm_start starting ...')
         warm_start_simulation()
         print ('warm_start finished, start RL training ...')
@@ -379,7 +379,7 @@ def run_episodes(count, status):
                 cumulative_turns += dialog_manager.state_tracker.turn_count
         
         # simulation
-        if agt == 9 or agt == 10 and params['trained_model_path'] == None:
+        if agt == 9 or agt == 10 or agt == 11 and params['trained_model_path'] == None:
             agent.predict_mode = True
             simulation_res = simulation_epoch(simulation_epoch_size)
             
@@ -413,7 +413,7 @@ def run_episodes(count, status):
     status['successes'] += successes
     status['count'] += count
     
-    if agt == 9 or agt == 10 and params['trained_model_path'] == None:
+    if agt == 9 or agt == 10 or agt == 11 and params['trained_model_path'] == None:
         save_model(params['write_model_dir'], agt, float(successes)/count, best_model['model'], best_res['epoch'], count)
         save_performance_records(params['write_model_dir'], agt, performance_records)
     
