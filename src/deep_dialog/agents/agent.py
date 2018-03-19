@@ -9,7 +9,7 @@ from deep_dialog import dialog_config
 class Agent:
     """ Prototype for all agent classes, defining the interface they must uphold """
 
-    def __init__(self, movie_dict=None, act_set=None, slot_set=None, params=None):
+    def __init__(self, movie_dict=None, act_set=None, slot_set=None, params=None, boltzmann=False):
         """ Constructor for the Agent class
 
         Arguments:
@@ -26,7 +26,7 @@ class Agent:
         self.epsilon = params['epsilon']
         self.agent_run_mode = params['agent_run_mode']
         self.agent_act_level = params['agent_act_level']
-        
+        self.boltzmann = boltzmann 
 
     def initialize_episode(self):
         """ Initialize a new episode. This function is called every time a new episode is run. """

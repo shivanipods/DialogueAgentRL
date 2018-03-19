@@ -31,7 +31,7 @@ import argparse, json, copy, os
 import cPickle as pickle
 
 from deep_dialog.dialog_system import DialogManager, text_to_dict
-from deep_dialog.agents import AgentCmd, InformAgent, RequestAllAgent, RandomAgent, EchoAgent, RequestBasicsAgent, AgentDQN, AgentDQNTorch
+from deep_dialog.agents import AgentCmd, InformAgent, RequestAllAgent, RandomAgent, EchoAgent, RequestBasicsAgent, AgentDQN, AgentDQNTorch, AgentDQNBoltzmann
 from deep_dialog.usersims import RuleSimulator
 
 from deep_dialog import dialog_config
@@ -175,6 +175,8 @@ elif agt == 9:
     agent = AgentDQN(movie_kb, act_set, slot_set, agent_params)
 elif agt == 10:
     agent = AgentDQNTorch(movie_kb, act_set, slot_set, agent_params)
+elif agt == 11:
+    agent = AgentDQNBoltzmann(movie_kb, act_set, slot_set, agent_params)
     
 ################################################################################
 #    Add your agent here
