@@ -91,10 +91,11 @@ class AgentBBQN(AgentDQNTorch):
 		reward = torch.FloatTensor(batch.reward)
 		temp = self.gamma * nqvalues
 		target = variable(reward) + temp.mul(variable(1 - mask))
-		# likelihood_error = log_gaussian(target, prediction, self.sigma_prior).sum()
 		likelihood_error = 0
 		for i in range(num_samples):
-			likelihood_error += -self.loss_function(prediction_list[i], target)
+			likelihood_error += log_gaussian(target, prediction_list[i], self.sigma_prior).sum()
+		# for i in range(num_samples):
+		# 	likelihood_error += (-self.loss_function(prediction_list[i], target))
 
 		return sample_log_pw/num_samples, sample_log_qw/num_samples, likelihood_error/num_samples
 
@@ -124,6 +125,8 @@ class AgentBBQN(AgentDQNTorch):
 
 		for iter_batch in range(num_epochs):
 			self.cur_bellman_err = 0
+			self.kl_divergence = 0
+			self.likelihood = 0
 			log_pw, log_qw, log_likelihood = 0., 0., 0.
 			n_batches = len(self.experience_replay_pool) / (batch_size)
 			for iter in range(n_batches):
@@ -138,8 +141,10 @@ class AgentBBQN(AgentDQNTorch):
 				loss.backward()
 				self.optimizer.step()
 				self.cur_bellman_err += loss.data.cpu().numpy().sum()
-
+				self.kl_divergence += (1./n_batches) * (log_qw - log_pw) * (1./batch_size)
+				self.likelihood += (log_llh/batch_size) #must be positive
 
 			print ("cur bellman err %.4f, experience replay pool %s" % (
 			float(self.cur_bellman_err) / len(self.experience_replay_pool), len(self.experience_replay_pool)))
+			print("curr kl divergence %.4f, curr likelihood(mse) %.4f" % (float(self.kl_divergence)/len(self.experience_replay_pool), float(self.likelihood)/len(self.experience_replay_pool)))
 

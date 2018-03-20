@@ -10,7 +10,7 @@ import torch
 from torch.autograd import Variable
 
 use_cuda = torch.cuda.is_available()
-#Tensor = torch.cuda.Tensor if use_cuda else torch.Tensor
+Tensor = torch.cuda.Tensor if use_cuda else torch.Tensor
 FloatTensor = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
 LongTensor = torch.cuda.LongTensor if use_cuda else torch.LongTensor
 ByteTensor = torch.cuda.ByteTensor if use_cuda else torch.ByteTensor
@@ -41,4 +41,4 @@ def log_gaussian_logsigma(x, mu, logsigma):
     return float(-0.5 * np.log(2 * np.pi)) - logsigma - (x - mu)**2 / (2 * torch.exp(logsigma)**2)
 
 def bayes_loss_function(l_pw, l_qw, l_likelihood, n_batches, batch_size):
-    return (1./n_batches) * (l_qw - l_pw) - l_likelihood #/ float(batch_size)
+    return ((1./n_batches) * (l_qw - l_pw) - l_likelihood)/float(batch_size)
