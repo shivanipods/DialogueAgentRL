@@ -61,16 +61,23 @@ class AgentBBQN(AgentDQNTorch):
 
 	def return_greedy_action(self, state_representation):
 		state_var = variable(torch.FloatTensor(state_representation).unsqueeze(0))
-		_,_,qvalues = self.dqn(state_var)
+		_,_,qvalues = self.dqn(state_var, infer=True)
 		action =  qvalues.data.max(1)[1]
 		return action[0]
 
 	def update_model_with_replay(self, batch, batch_size):
+		num_samples = 3
 		batch = self.transition(*zip(*batch))
 		state_batch = variable(torch.FloatTensor(batch.state))
 		action_batch = variable(torch.LongTensor(batch.action))
-		sample_log_pw, sample_log_qw, qvalues = self.dqn(state_batch)
-		prediction = qvalues.gather(1, action_batch.view(batch_size, 1))
+		prediction_list = []
+		sample_log_pw, sample_log_qw = 0., 0.
+		for i in range(num_samples):
+			log_pw, log_qw, qvalues = self.dqn(state_batch)
+			prediction_list.append(qvalues.gather(1, action_batch.view(batch_size, 1)))
+			sample_log_qw += log_qw
+			sample_log_pw += log_pw
+		# prediction = qvalues.gather(1, action_batch.view(batch_size, 1))
 		## this is the variational approximation (q) and posterior (p) used to compute KL divergence
 		target = variable(torch.zeros(batch_size))
 		next_state_batch = variable(torch.FloatTensor(batch.next_state), volatile=True)
@@ -80,14 +87,16 @@ class AgentBBQN(AgentDQNTorch):
 			_, _, nqvalues = self.clone_dqn(next_state_batch)
 		nqvalues = nqvalues.max(1)[0]
 		nqvalues.volatile = False
-		# loss = self.loss_function(prediction, target)
 		mask = torch.FloatTensor(batch.is_terminal)
 		reward = torch.FloatTensor(batch.reward)
 		temp = self.gamma * nqvalues
-		target = variable(reward, volatile=False) + temp.mul(
-			variable(1 - mask, volatile=False))
-		likelihood_error = log_gaussian(target, prediction, self.sigma_prior).sum()
-		return sample_log_pw, sample_log_qw, likelihood_error
+		target = variable(reward) + temp.mul(variable(1 - mask))
+		# likelihood_error = log_gaussian(target, prediction, self.sigma_prior).sum()
+		likelihood_error = 0
+		for i in range(num_samples):
+			likelihood_error += -self.loss_function(prediction_list[i], target)
+
+		return sample_log_pw/num_samples, sample_log_qw/num_samples, likelihood_error/num_samples
 
 
 
@@ -102,9 +111,9 @@ class AgentBBQN(AgentDQNTorch):
 
 		## create pytorch optimizer object
 		if optimizer_type == 'rmsprop':
-			self.optimizer = optim.RMSprop(self.dqn.parameters(), lr=learning_rate, weight_decay=reg_cost)
+			self.optimizer = optim.RMSprop(self.dqn.parameters(), lr=learning_rate) #, weight_decay=reg_cost)
 		else:
-			self.optimizer = optim.Adam(self.dqn.parameters(), lr=learning_rate, weight_decay=reg_cost)
+			self.optimizer = optim.Adam(self.dqn.parameters(), lr=learning_rate) #, weight_decay=reg_cost)
 
 		## define loss function
 		if loss_function_type == "hubert":

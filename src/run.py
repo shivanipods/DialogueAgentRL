@@ -434,7 +434,7 @@ def run_episodes(count, status):
                 best_res['epoch'] = episode
                 
             agent.clone_dqn = copy.deepcopy(agent.dqn)
-            agent.train(batch_size, 1)
+            agent.train(batch_size, 2)
             agent.predict_mode = False
             
             print ("Simulation success rate %s, Ave reward %s, Ave turns %s, Best success rate %s" % (performance_records['success_rate'][episode], performance_records['ave_reward'][episode], performance_records['ave_turns'][episode], best_res['success_rate']))

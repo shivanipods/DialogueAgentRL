@@ -277,8 +277,7 @@ class AgentDQNTorch(Agent):
 		reward = torch.FloatTensor(batch.reward)
 		temp = self.gamma * nqvalues
 		#ipdb.set_trace()
-		target = variable(reward, volatile=False) + temp.mul(
-                            variable(1 - mask,volatile=False))
+		target = variable(reward) + temp.mul(variable(1 - mask))
 		loss = self.loss_function(prediction, target)
 		self.optimizer.zero_grad()
 		loss.backward()
