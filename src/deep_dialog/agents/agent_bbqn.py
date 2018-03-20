@@ -128,7 +128,7 @@ class AgentBBQN(AgentDQNTorch):
 				self.optimizer.zero_grad()
 				loss.backward()
 				self.optimizer.step()
-				self.cur_bellman_err += loss.data.numpy().sum()
+				self.cur_bellman_err += loss.data.cpu().numpy().sum()
 
 
 			print ("cur bellman err %.4f, experience replay pool %s" % (
