@@ -1,4 +1,4 @@
-CUDA_VISIBLE_DEVICES=5 python run.py --agt 12 --usr 1 --max_turn 40 \
+CUDA_VISIBLE_DEVICES=0 python run.py --agt 12 --usr 1 --max_turn 40 \
 	      --movie_kb_path ./deep_dialog/data/movie_kb.1k.p \
 	      --dqn_hidden_size 80 \
 	      --experience_replay_pool_size 1000 \
@@ -13,3 +13,4 @@ CUDA_VISIBLE_DEVICES=5 python run.py --agt 12 --usr 1 --max_turn 40 \
 	      --goal_file_path ./deep_dialog/data/user_goals_first_turn_template.part.movie.v1.p \
 	      --warm_start 1 \
 	      --warm_start_epochs 120 \
+          --lr_rate 0.001 \

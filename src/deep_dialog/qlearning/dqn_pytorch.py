@@ -38,8 +38,10 @@ class MultiLayerQNetwork(nn.Module):
 		super(MultiLayerQNetwork, self).__init__()
 		self.mlp_layer = nn.Sequential(torch.nn.Linear(input_size, hidden_size1),
 									   torch.nn.ReLU(),
+                                                                           torch.nn.Dropout(p=0.2),
 									   torch.nn.Linear(hidden_size1, hidden_size2),
 									   torch.nn.ReLU(),
+                                                                           torch.nn.Dropout(p=0.2),
 									   torch.nn.Linear(hidden_size2, output_size))
 
 	def forward(self, input):

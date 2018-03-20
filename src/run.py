@@ -101,6 +101,7 @@ if __name__ == "__main__":
     parser.add_argument('--split_fold', dest='split_fold', default=5, type=int, help='the number of folders to split the user goal')
     parser.add_argument('--learning_phase', dest='learning_phase', default='all', type=str, help='train/test/all; default is all')
     parser.add_argument('--target_sample_type', dest='target_sample_type', default='map', type=str, help='type of sampling for target q-network')
+    parser.add_argument('--lrate', dest='lrate', default=0.0005, type=float, help='learning rate')
 
     args = parser.parse_args()
     params = vars(args)
@@ -161,6 +162,7 @@ agent_params['predict_mode'] = params['predict_mode']
 agent_params['trained_model_path'] = params['trained_model_path']
 agent_params['warm_start'] = params['warm_start']
 agent_params['cmd_input_mode'] = params['cmd_input_mode']
+agent_params['lrate'] = params['lrate']
 ## if there are additional agent parameters to be added for our implementation
 
 if agt == 0:
