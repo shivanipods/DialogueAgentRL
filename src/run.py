@@ -465,7 +465,7 @@ def test_episodes(num_runs, status):
         average_success_rate += simulation_res['success_rate']
         average_reward += simulation_res['ave_reward']
         average_turns += simulation_res['ave_turns']
-    print("Test time performance: success rate %.2f , Avg reward: %.2f, Avg turns: %.2f" % float(average_success_rate)/num_runs, float(average_reward)/num_runs, float(average_turns)/num_runs)
+    print("Test time performance: success rate %.2f , Avg reward: %.2f, Avg turns: %.2f" % (float(average_success_rate)/num_runs, float(average_reward)/num_runs, float(average_turns)/num_runs))
     ## code to write down sample episodes
 
 
