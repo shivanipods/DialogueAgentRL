@@ -29,9 +29,10 @@ RL: python run.py --agt 9 --usr 1 --max_turn 40 --movie_kb_path .\deep_dialog\da
 
 import argparse, json, copy, os
 import cPickle as pickle
+import numpy as np
 
 from deep_dialog.dialog_system import DialogManager, text_to_dict
-from deep_dialog.agents import AgentCmd, InformAgent, RequestAllAgent, RandomAgent, EchoAgent, RequestBasicsAgent, AgentDQN, AgentDQNTorch
+from deep_dialog.agents import AgentCmd, InformAgent, RequestAllAgent, RandomAgent, EchoAgent, RequestBasicsAgent, AgentDQN, AgentDQNTorch, AgentDQNBoltzmann, AgentBBQN
 from deep_dialog.usersims import RuleSimulator
 
 from deep_dialog import dialog_config
@@ -53,6 +54,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--dict_path', dest='dict_path', type=str, default='./deep_dialog/data/dicts.v3.p', help='path to the .json dictionary file')
+    parser.add_argument("--test_mode", default=False, action="store_true")
     parser.add_argument('--movie_kb_path', dest='movie_kb_path', type=str, default='./deep_dialog/data/movie_kb.1k.p', help='path to the movie kb .json file')
     parser.add_argument('--act_set', dest='act_set', type=str, default='./deep_dialog/data/dia_acts.txt', help='path to dia act set; none for loading from labeled file')
     parser.add_argument('--slot_set', dest='slot_set', type=str, default='./deep_dialog/data/slot_set.txt', help='path to slot set; none for loading from labeled file')
@@ -90,14 +92,16 @@ if __name__ == "__main__":
     parser.add_argument('--warm_start_epochs', dest='warm_start_epochs', type=int, default=100, help='the number of epochs for warm start')
     
     parser.add_argument('--trained_model_path', dest='trained_model_path', type=str, default=None, help='the path for trained model')
-    parser.add_argument('-o', '--write_model_dir', dest='write_model_dir', type=str, default='./deep_dialog/checkpoints/', help='write model to disk') 
+    parser.add_argument('-o', '--write_model_dir', dest='write_model_dir', type=str, default='./deep_dialog/checkpoints/', help='write model to disk')
+    parser.add_argument('--final_checkpoint_path', dest='final_checkpoint_path', type=str, default=None, help='path to the final checkpoint of model to be tested')
     parser.add_argument('--save_check_point', dest='save_check_point', type=int, default=10, help='number of epochs for saving model')
      
     parser.add_argument('--success_rate_threshold', dest='success_rate_threshold', type=float, default=0.3, help='the threshold for success rate')
     
     parser.add_argument('--split_fold', dest='split_fold', default=5, type=int, help='the number of folders to split the user goal')
     parser.add_argument('--learning_phase', dest='learning_phase', default='all', type=str, help='train/test/all; default is all')
-    
+    parser.add_argument('--target_sample_type', dest='target_sample_type', default='map', type=str, help='type of sampling for target q-network')
+
     args = parser.parse_args()
     params = vars(args)
 
@@ -175,6 +179,10 @@ elif agt == 9:
     agent = AgentDQN(movie_kb, act_set, slot_set, agent_params)
 elif agt == 10:
     agent = AgentDQNTorch(movie_kb, act_set, slot_set, agent_params)
+elif agt == 11:
+    agent = AgentDQNBoltzmann(movie_kb, act_set, slot_set, agent_params)
+elif agt == 12:
+    agent = AgentBBQN(movie_kb, act_set, slot_set, agent_params)
     
 ################################################################################
 #    Add your agent here
@@ -268,7 +276,7 @@ def save_model(path, agt, success_rate, agent, best_epoch, cur_epoch):
     filepath = os.path.join(path, filename)
     checkpoint = {}
     if agt == 9: checkpoint['model'] = copy.deepcopy(agent.dqn.model)
-    if agt == 10: checkpoint['model'] = copy.deepcopy(agent.dqn)
+    if agt == 10 or agt == 11 or agt == 12: checkpoint['model'] = copy.deepcopy(agent.dqn)
     checkpoint['params'] = params
     try:
         pickle.dump(checkpoint, open(filepath, "wb"))
@@ -276,6 +284,18 @@ def save_model(path, agt, success_rate, agent, best_epoch, cur_epoch):
     except Exception, e:
         print 'Error: Writing model fails: %s' % (filepath, )
         print e
+
+def load_model(path):
+    try:
+        checkpoint = pickle.load(open(path, "rb"))
+        print 'loaded the checkpoint %s' % (path,)
+        return checkpoint
+    except Exception, e:
+        print "Error: Reading model fails: %s" % (path,)
+        print e
+        return None
+
+
 
 """ save performance numbers """
 def save_performance_records(path, agt, records):
@@ -293,24 +313,32 @@ def simulation_epoch(simulation_epoch_size):
     successes = 0
     cumulative_reward = 0
     cumulative_turns = 0
-    
+    cumulative_reward_list = []
+    cumulative_turn_list = []
     res = {}
     for episode in xrange(simulation_epoch_size):
         dialog_manager.initialize_episode()
         episode_over = False
+        episode_reward = 0
         while(not episode_over):
             episode_over, reward = dialog_manager.next_turn()
             cumulative_reward += reward
+            episode_reward += reward
             if episode_over:
                 if reward > 0: 
                     successes += 1
                     print ("simulation episode %s: Success" % (episode))
                 else: print ("simulation episode %s: Fail" % (episode))
                 cumulative_turns += dialog_manager.state_tracker.turn_count
+                cumulative_turn_list.append(dialog_manager.state_tracker.turn_count)
+                cumulative_reward_list.append(episode_reward)
+
     
     res['success_rate'] = float(successes)/simulation_epoch_size
     res['ave_reward'] = float(cumulative_reward)/simulation_epoch_size
     res['ave_turns'] = float(cumulative_turns)/simulation_epoch_size
+    res['std_reward'] = np.std(cumulative_reward_list)
+    res['std_turns'] = np.std(cumulative_turn_list)
     print ("simulation success rate %s, ave reward %s, ave turns %s" % (res['success_rate'], res['ave_reward'], res['ave_turns']))
     return res
 
@@ -319,21 +347,27 @@ def warm_start_simulation():
     successes = 0
     cumulative_reward = 0
     cumulative_turns = 0
-    
+    cumulative_reward_list = []
+    cumulative_turn_list = []
+
     res = {}
     warm_start_run_epochs = 0
     for episode in xrange(warm_start_epochs):
         dialog_manager.initialize_episode()
         episode_over = False
+        episode_reward = 0
         while(not episode_over):
             episode_over, reward = dialog_manager.next_turn()
             cumulative_reward += reward
+            episode_reward += reward
             if episode_over:
                 if reward > 0: 
                     successes += 1
                     print ("warm_start simulation episode %s: Success" % (episode))
                 else: print ("warm_start simulation episode %s: Fail" % (episode))
                 cumulative_turns += dialog_manager.state_tracker.turn_count
+                cumulative_turn_list.append(dialog_manager.state_tracker.turn_count)
+                cumulative_reward_list.append(episode_reward)
         
         warm_start_run_epochs += 1
         
@@ -344,6 +378,8 @@ def warm_start_simulation():
     res['success_rate'] = float(successes)/warm_start_run_epochs
     res['ave_reward'] = float(cumulative_reward)/warm_start_run_epochs
     res['ave_turns'] = float(cumulative_turns)/warm_start_run_epochs
+    res['std_reward'] = np.std(cumulative_reward_list)
+    res['std_turns'] = np.std(cumulative_turn_list)
     print ("Warm_Start %s epochs, success rate %s, ave reward %s, ave turns %s" % (episode+1, res['success_rate'], res['ave_reward'], res['ave_turns']))
     print ("Current experience replay buffer size %s" % (len(agent.experience_replay_pool)))
 
@@ -354,7 +390,7 @@ def run_episodes(count, status):
     cumulative_reward = 0
     cumulative_turns = 0
     
-    if agt == 9 or agt == 10 and params['trained_model_path'] == None and warm_start == 1:
+    if agt == 9 or agt == 10 or agt == 11 or agt == 12 and params['trained_model_path'] == None and warm_start == 1:
         print ('warm_start starting ...')
         warm_start_simulation()
         print ('warm_start finished, start RL training ...')
@@ -377,7 +413,7 @@ def run_episodes(count, status):
                 cumulative_turns += dialog_manager.state_tracker.turn_count
         
         # simulation
-        if agt == 9 or agt == 10 and params['trained_model_path'] == None:
+        if agt == 9 or agt == 10 or agt == 11 or agt == 12 and params['trained_model_path'] == None:
             agent.predict_mode = True
             simulation_res = simulation_epoch(simulation_epoch_size)
             
@@ -411,8 +447,29 @@ def run_episodes(count, status):
     status['successes'] += successes
     status['count'] += count
     
-    if agt == 9 or agt == 10 and params['trained_model_path'] == None:
+    if agt == 9 or agt == 10 or agt == 11 or agt == 12 and params['trained_model_path'] == None:
         save_model(params['write_model_dir'], agt, float(successes)/count, best_model['model'], best_res['epoch'], count)
         save_performance_records(params['write_model_dir'], agt, performance_records)
-    
-run_episodes(num_episodes, status)
+
+def test_episodes(num_runs, status):
+    ## load saved best model
+    ## agent best, params
+    checkpoint = load_model(params["final_checkpoint_path"])
+    agent.dqn = copy.deepcopy(checkpoint["model"])
+    num_episodes = 10000
+    average_success_rate = 0
+    average_reward = 0
+    average_turns = 0
+    for i in range(num_runs):
+        simulation_res = simulation_epoch(num_episodes)
+        average_success_rate += simulation_res['success_rate']
+        average_reward += simulation_res['ave_reward']
+        average_turns += simulation_res['ave_turns']
+    print("Test time performance: success rate %.2f , Avg reward: %.2f, Avg turns: %.2f" % float(average_success_rate)/num_runs, float(average_reward)/num_runs, float(average_turns)/num_runs)
+    ## code to write down sample episodes
+
+
+if not params['test_mode']:
+    run_episodes(num_episodes, status)
+else:
+    test_episodes(5, status)

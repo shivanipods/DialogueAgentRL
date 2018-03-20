@@ -1,28 +1,57 @@
+import random, copy
 import random, copy, json
 import cPickle as pickle
 import numpy as np
-
-
-from deep_dialog import dialog_config
-from collections import deque
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-from collections import namedtuple
-from torch.autograd import Variable
-
 from agent_dqn_torch import AgentDQNTorch
+from agent import Agent
 from deep_dialog.qlearning.bayesianDQN import BayesianMLP
 from deep_dialog.qlearning.utils import *
-
+from deep_dialog import dialog_config
+from collections import namedtuple
+from constants import *
 
 class AgentBBQN(AgentDQNTorch):
 	def __init__(self, movie_dict=None, act_set=None, slot_set=None, params=None):
-		super(AgentBBQN, self).__init__(movie_dict, act_set, slot_set, params)
+
+		## parameters associated with dialogue action and slot filling
+		self.movie_dict = movie_dict
+		self.act_set = act_set
+		self.slot_set = slot_set
+		self.act_cardinality = len(act_set.keys())
+		self.slot_cardinality = len(slot_set.keys())
+
+		self.feasible_actions = dialog_config.feasible_actions
+		self.num_actions = len(self.feasible_actions)
+
+		# rl specific parameters
+		# epsilon:
+		self.params = params
+		self.epsilon = params['epsilon']
+		#
+		self.agent_run_mode = params['agent_run_mode']
+		#
+		self.agent_act_level = params['agent_act_level']
+		# experience replay
+		self.experience_replay_pool_size = params.get('experience_replay_pool_size', 1000)
+		self.experience_replay_pool = []  # Replay_Memory(self.experience_replay_pool_size)
+		self.hidden_size = params.get('dqn_hidden_size', 60)
+		# gamma : discount factor
+		self.gamma = params.get('gamma', 0.9)
+		self.predict_mode = params.get('predict_mode', False)
+		## warm start:
+		self.warm_start = params.get('warm_start', 0)
+
+		self.max_turn = params['max_turn'] + 4
+		self.state_dimension = 2 * self.act_cardinality + 7 * self.slot_cardinality + 3 + self.max_turn
+		self.transition = namedtuple('transition', ('state', 'action', 'reward', 'next_state', 'is_terminal'))
+		self.cur_bellman_err = 0
+
+		## BBQN specific parameters
 		self.sigma_prior = params.get('sigma_prior', float(np.exp(-3)))
-		## reference is being replaced
-		self.dqn = BayesianMLP(self.state_dimension, self.hidden_size, self.hidden_size, self.num_actions)
+		self.target_sample_type = params.get('target_sample_type', 'map')
+
+
+		self.dqn = BayesianMLP(self.state_dimension, self.hidden_size, self.hidden_size, self.num_actions, self.sigma_prior)
 		self.clone_dqn = copy.deepcopy(self.dqn)
 		if torch.cuda.is_available():
 			self.dqn.cuda()
@@ -31,75 +60,38 @@ class AgentBBQN(AgentDQNTorch):
 
 
 	def return_greedy_action(self, state_representation):
-		state_var = Variable(torch.FloatTensor(state_representation).unsqueeze(0))
-		if torch.cuda.is_available():
-			state_var = state_var.cuda()
-		qvalues = self.dqn(state_var)
+		state_var = variable(torch.FloatTensor(state_representation).unsqueeze(0))
+		_,_,qvalues = self.dqn(state_var)
 		action =  qvalues.data.max(1)[1]
 		return action[0]
-
-	# def update_model_with_replay(self, batch, batch_size):
-	#
-	# 	batch = self.transition(*zip(*batch))
-	# 	state_batch = Variable(torch.FloatTensor(batch.state))
-	# 	action_batch = Variable(torch.LongTensor(batch.action))
-	# 	if torch.cuda.is_available():
-	# 		state_batch = state_batch.cuda()
-	# 		action_batch = action_batch.cuda()
-	# 	prediction = self.dqn(state_batch).gather(1, action_batch.view(batch_size, 1))
-	# 	sample_log_pw, sample_log_qw = self.dqn.get_lpw_lqw()
-	# 	target = Variable(torch.zeros(batch_size))
-	# 	next_state_batch = Variable(torch.FloatTensor(batch.next_state), volatile=True)
-	# 	nqvalues = self.clone_dqn(next_state_batch)
-	# 	nqvalues = nqvalues.max(1)[0]
-	# 	nqvalues.volatile = False
-	# 	for i in range(batch_size):
-	# 		done = batch.is_terminal[i]
-	# 		target[i] = batch.reward[i] + (1 - done) * self.gamma * nqvalues[i]
-	# 	if torch.cuda.is_available():
-	# 		target = target.cuda()
-	# 	loss = self.loss_function(prediction, target)
-	# 	self.optimizer.zero_grad()
-	# 	loss.backward()
-	# 	self.optimizer.step()
-	# 	return loss
 
 	def update_model_with_replay(self, batch, batch_size):
-		s_log_pw, s_log_qw, s_log_likelihood = 0., 0., 0.
 		batch = self.transition(*zip(*batch))
-		state_batch = Variable(torch.FloatTensor(batch.state))
-		action_batch = Variable(torch.LongTensor(batch.action))
-		if torch.cuda.is_available():
-			state_batch = state_batch.cuda()
-			action_batch = action_batch.cuda()
-		prediction = self.dqn(state_batch).gather(1, action_batch.view(batch_size, 1))
+		state_batch = variable(torch.FloatTensor(batch.state))
+		action_batch = variable(torch.LongTensor(batch.action))
+		sample_log_pw, sample_log_qw, qvalues = self.dqn(state_batch)
+		prediction = qvalues.gather(1, action_batch.view(batch_size, 1))
 		## this is the variational approximation (q) and posterior (p) used to compute KL divergence
-		sample_log_pw, sample_log_qw = self.dqn.get_lpw_lqw()
-		target = Variable(torch.zeros(batch_size))
-		next_state_batch = Variable(torch.FloatTensor(batch.next_state), volatile=True)
-		nqvalues = self.clone_dqn(next_state_batch, infer=True)
+		target = variable(torch.zeros(batch_size))
+		next_state_batch = variable(torch.FloatTensor(batch.next_state), volatile=True)
+		if self.target_sample_type == 'map':
+			_,_,nqvalues = self.clone_dqn(next_state_batch, infer=True)
+		else:
+			_, _, nqvalues = self.clone_dqn(next_state_batch)
 		nqvalues = nqvalues.max(1)[0]
+		nqvalues.volatile = False
 		# loss = self.loss_function(prediction, target)
-		for i in range(batch_size):
-			done = batch.is_terminal[i]
-			target[i] = batch.reward[i] + (1 - done) * self.gamma * nqvalues[i]
+		mask = torch.FloatTensor(batch.is_terminal)
+		reward = torch.FloatTensor(batch.reward)
+		temp = self.gamma * nqvalues
+		target = variable(reward, volatile=False) + temp.mul(
+			variable(1 - mask, volatile=False))
 		likelihood_error = log_gaussian(target, prediction, self.sigma_prior).sum()
-		s_log_pw = sample_log_pw.sum()
-		s_log_qw = sample_log_qw.sum()
-		s_log_likelihood = likelihood_error.sum()
-		return s_log_pw/batch_size, s_log_qw/batch_size, s_log_likelihood/batch_size
+		return sample_log_pw, sample_log_qw, likelihood_error
 
 
-	def return_greedy_action(self, state_representation):
-		state_var = Variable(torch.FloatTensor(state_representation).unsqueeze(0))
-		if torch.cuda.is_available():
-			state_var = state_var.cuda()
-		qvalues = self.dqn(state_var)
-		action =  qvalues.data.max(1)[1]
-		return action[0]
 
-
-	def train(self, batch_size=1, num_batches=100):
+	def train(self, batch_size=1, num_epochs=100):
 		""" Train DQN with experience replay """
 		optimizer_type = self.params.get("optimizer", "adam")
 		learning_rate = self.params.get("lrate", 0.0001)
@@ -121,10 +113,11 @@ class AgentBBQN(AgentDQNTorch):
 			self.loss_function = nn.MSELoss()
 
 
-		for iter_batch in range(num_batches):
+		for iter_batch in range(num_epochs):
 			self.cur_bellman_err = 0
 			log_pw, log_qw, log_likelihood = 0., 0., 0.
-			for iter in range(len(self.experience_replay_pool) / (batch_size)):
+			n_batches = len(self.experience_replay_pool) / (batch_size)
+			for iter in range(n_batches):
 				batch = [random.choice(self.experience_replay_pool) for i in xrange(batch_size)]
 				# batch_struct = self.dqn.singleBatch(batch, {'gamma': self.gamma}, self.clone_dqn)
 				# self.cur_bellman_err += batch_struct['cost']['total_cost']
@@ -135,7 +128,7 @@ class AgentBBQN(AgentDQNTorch):
 				self.optimizer.zero_grad()
 				loss.backward()
 				self.optimizer.step()
-				# self.cur_bellman_err += mse_loss.data.numpy().sum()
+				self.cur_bellman_err += loss.data.numpy().sum()
 
 
 			print ("cur bellman err %.4f, experience replay pool %s" % (

@@ -7,6 +7,13 @@ Created on Jun 18, 2016
 import numpy as np
 import math
 import torch
+from torch.autograd import Variable
+
+use_cuda = torch.cuda.is_available()
+Tensor = torch.cuda.Tensor if use_cuda else torch.Tensor
+FloatTensor = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
+LongTensor = torch.cuda.LongTensor if use_cuda else torch.LongTensor
+ByteTensor = torch.cuda.ByteTensor if use_cuda else torch.ByteTensor
 
 
 def initWeight(n,d):
@@ -21,6 +28,11 @@ def mergeDicts(d0, d1):
             d0[k] += d1[k]
         else:
             d0[k] = d1[k]
+
+def variable(v, volatile=False):
+    if use_cuda:
+        return Variable(v, volatile=volatile).cuda()
+    return Variable(v, volatile=volatile)
 
 def log_gaussian(x, mu, sigma):
     return float(-0.5 * np.log(2 * np.pi) - np.log(np.abs(sigma))) - (x - mu)**2 / (2 * sigma**2)

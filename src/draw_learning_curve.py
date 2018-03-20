@@ -23,7 +23,7 @@ def load_performance_file(path):
     """ load the performance score (.json) file """
     
     data = json.load(open(path, 'rb'))
-    numbers = {'x': [], 'success_rate':[], 'ave_turns':[], 'ave_rewards':[]}
+    numbers = {'x': [], 'success_rate':[], 'ave_turns':[], 'ave_rewards':[], 'std_reward':[], 'std_turns':[]}
     keylist = [int(key) for key in data['success_rate'].keys()]
     keylist.sort()
 
@@ -33,9 +33,11 @@ def load_performance_file(path):
             numbers['success_rate'].append(data['success_rate'][str(key)])
             numbers['ave_turns'].append(data['ave_turns'][str(key)])
             numbers['ave_rewards'].append(data['ave_reward'][str(key)])
+            numbers['std_reward'].append(data['std_reward'][str(key)])
+            numbers['std_turns'].append(data['std_turns'][str(key)])
     return numbers
 
-def draw_learning_curve(numbers):
+def draw_learning_curve_successrate(numbers):
     """ draw the learning curve """
     
     plt.xlabel('Simulation Epoch')
@@ -45,17 +47,30 @@ def draw_learning_curve(numbers):
 
     plt.plot(numbers['x'], numbers['success_rate'], 'r', lw=1)
     plt.show()
-            
-    
+
+
+def draw_learning_curve_reward(numbers):
+    """ draw the learning curve """
+
+    plt.xlabel('Simulation Epoch')
+    plt.ylabel('Reward')
+    plt.title('Learning Curve')
+    plt.grid(True)
+
+    plt.plot(numbers['x'], numbers['ave_rewards'], 'r', lw=1)
+    plt.show()
             
 def main(params):
     cmd = params['cmd']
     
     if cmd == 0:
         numbers = load_performance_file(params['result_file'])
-        draw_learning_curve(numbers)
+        draw_learning_curve_successrate(numbers)
     elif cmd == 1:
         read_performance_records(params['result_file'])
+    elif cmd == 2:
+        numbers = load_performance_file(params['result_file'])
+        draw_learning_curve_reward(numbers)
 
 
 if __name__ == "__main__":
@@ -68,5 +83,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     params = vars(args)
     print json.dumps(params, indent=2)
-
     main(params)
