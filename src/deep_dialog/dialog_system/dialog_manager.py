@@ -102,7 +102,6 @@ class DialogManager:
     
     def print_function(self, agent_action=None, user_action=None):
         """ Print Function """
-            
         if agent_action:
             if dialog_config.run_mode == 0:
                 if self.agent.__class__.__name__ != 'AgentCmd':

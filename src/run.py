@@ -474,4 +474,4 @@ def test_episodes(num_runs, status):
 if not params['test_mode']:
     run_episodes(num_episodes, status)
 else:
-    test_episodes(5, status)
+    test_episodes(1, status)
