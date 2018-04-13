@@ -12,7 +12,8 @@ from deep_dialog import dialog_config
 class DialogManager:
     """ A dialog manager to mediate the interaction between an agent and a customer """
     
-    def __init__(self, agent, user, act_set, slot_set, movie_dictionary):
+    def __init__(self, agent, user, act_set, slot_set, movie_dictionary, 
+            is_dqn=False):
         self.agent = agent
         self.user = user
         self.act_set = act_set
@@ -21,10 +22,10 @@ class DialogManager:
         self.user_action = None
         self.reward = 0
         self.episode_over = False
+        self.is_dqn = is_dqn
 
     def initialize_episode(self):
         """ Refresh state for new dialog """
-        
         self.reward = 0
         self.episode_over = False
         self.state_tracker.initialize_episode()
@@ -35,7 +36,6 @@ class DialogManager:
             print ("New episode, user goal:")
             print json.dumps(self.user.goal, indent=2)
         self.print_function(user_action = self.user_action)
-            
         self.agent.initialize_episode()
 
     def next_turn(self, record_training_data=True):
@@ -73,7 +73,8 @@ class DialogManager:
         ########################################################################
         #  Inform agent of the outcome for this timestep (s_t, a_t, r, s_{t+1}, episode_over)
         ########################################################################
-        if record_training_data:
+        # No Experience Replay in A2C # TODO: Fix for A2C
+        if self.is_dqn and record_training_data:
             self.agent.register_experience_replay_tuple(self.state, self.agent_action, self.reward, self.state_tracker.get_state_for_agent(), self.episode_over)
         
         return (self.episode_over, self.reward)

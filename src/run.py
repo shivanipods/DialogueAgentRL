@@ -29,10 +29,13 @@ RL: python run.py --agt 9 --usr 1 --max_turn 40 --movie_kb_path .\deep_dialog\da
 
 import argparse, json, copy, os
 import cPickle as pickle
+import ipdb
 import numpy as np
 
 from deep_dialog.dialog_system import DialogManager, text_to_dict
-from deep_dialog.agents import AgentCmd, InformAgent, RequestAllAgent, RandomAgent, EchoAgent, RequestBasicsAgent, AgentDQN, AgentDQNTorch, AgentDQNBoltzmann, AgentBBQN
+from deep_dialog.agents import AgentCmd, InformAgent, RequestAllAgent, \
+        RandomAgent, EchoAgent, RequestBasicsAgent, \
+        AgentDQN, AgentDQNTorch, AgentDQNBoltzmann, AgentBBQN, AgentA2C
 from deep_dialog.usersims import RuleSimulator
 
 from deep_dialog import dialog_config
@@ -87,7 +90,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', dest='batch_size', type=int, default=16, help='batch size')
     parser.add_argument('--gamma', dest='gamma', type=float, default=0.9, help='gamma for DQN')
     parser.add_argument('--predict_mode', dest='predict_mode', type=bool, default=False, help='predict model for DQN')
-    parser.add_argument('--simulation_epoch_size', dest='simulation_epoch_size', type=int, default=50, help='the size of validation set')
+    parser.add_argument('--simulation_epoch_size', dest='simulation_epoch_size', type=int, default=5, help='the size of validation set')
     parser.add_argument('--warm_start', dest='warm_start', type=int, default=1, help='0: no warm start; 1: warm start for training')
     parser.add_argument('--warm_start_epochs', dest='warm_start_epochs', type=int, default=100, help='the number of epochs for warm start')
     
@@ -102,6 +105,10 @@ if __name__ == "__main__":
     parser.add_argument('--learning_phase', dest='learning_phase', default='all', type=str, help='train/test/all; default is all')
     parser.add_argument('--target_sample_type', dest='target_sample_type', default='map', type=str, help='type of sampling for target q-network')
     parser.add_argument('--lrate', dest='lrate', default=0.0005, type=float, help='learning rate')
+    parser.add_argument('--actor_lr', dest='actor_lr', default=0.0005, type=float, help='actor learning rate')
+    parser.add_argument('--critic_lr', dest='critic_lr', default=0.0005, type=float, help='critic learning rate')
+    parser.add_argument('--n', dest='n', default=50, type=int, help='critics N')
+    parser.add_argument('--is_dqn', dest='is_dqn', default=False, type=bool, help='Train DQN or A2C')
 
     args = parser.parse_args()
     params = vars(args)
@@ -163,6 +170,8 @@ agent_params['trained_model_path'] = params['trained_model_path']
 agent_params['warm_start'] = params['warm_start']
 agent_params['cmd_input_mode'] = params['cmd_input_mode']
 agent_params['lrate'] = params['lrate']
+agent_params['actor_lr'] = params['actor_lr']
+agent_params['critic_lr'] = params['critic_lr']
 ## if there are additional agent parameters to be added for our implementation
 
 if agt == 0:
@@ -185,7 +194,11 @@ elif agt == 11:
     agent = AgentDQNBoltzmann(movie_kb, act_set, slot_set, agent_params)
 elif agt == 12:
     agent = AgentBBQN(movie_kb, act_set, slot_set, agent_params)
-    
+   
+if params['is_dqn']==False:
+    print "Training for A2C Now..."
+    agt = 13
+    agent = AgentA2C(movie_kb, act_set, slot_set, agent_params)
 ################################################################################
 #    Add your agent here
 ################################################################################
@@ -243,7 +256,8 @@ user_sim.set_nlu_model(nlu_model)
 ################################################################################
 # Dialog Manager
 ################################################################################
-dialog_manager = DialogManager(agent, user_sim, act_set, slot_set, movie_kb)
+dialog_manager = DialogManager(agent, user_sim, act_set, slot_set, movie_kb, 
+        params['is_dqn'])
     
     
 ################################################################################
@@ -263,7 +277,8 @@ save_check_point = params['save_check_point']
 """ Best Model and Performance Records """
 best_model = {}
 best_res = {'success_rate': 0, 'ave_reward':float('-inf'), 'ave_turns': float('inf'), 'epoch':0}
-best_model['model'] = copy.deepcopy(agent)
+#best_model['model'] = copy.deepcopy(agent)
+best_model['model'] = agent
 best_res['success_rate'] = 0
 
 performance_records = {}
@@ -273,12 +288,16 @@ performance_records['ave_reward'] = {}
 
 
 """ Save model """
-def save_model(path, agt, success_rate, agent, best_epoch, cur_epoch):
+def save_model(path, agt, success_rate, agent, best_epoch, cur_epoch, is_dqn=False):
     filename = 'agt_%s_%s_%s_%.5f.p' % (agt, best_epoch, cur_epoch, success_rate)
     filepath = os.path.join(path, filename)
     checkpoint = {}
+    ipdb.set_trace()
     if agt == 9: checkpoint['model'] = copy.deepcopy(agent.dqn.model)
     if agt == 10 or agt == 11 or agt == 12: checkpoint['model'] = copy.deepcopy(agent.dqn)
+    if agt==13 and is_dqn==False:
+        checkpoint['actor_model'] = copy.deepcopy(agent.actor_model)
+        checkpoint['critic_model'] = copy.deepcopy(agent.critic_model)
     checkpoint['params'] = params
     try:
         pickle.dump(checkpoint, open(filepath, "wb"))
@@ -318,6 +337,9 @@ def simulation_epoch(simulation_epoch_size):
     cumulative_reward_list = []
     cumulative_turn_list = []
     res = {}
+    states = []
+    actions = []
+    rewards = []
     for episode in xrange(simulation_epoch_size):
         dialog_manager.initialize_episode()
         episode_over = False
@@ -334,15 +356,16 @@ def simulation_epoch(simulation_epoch_size):
                 cumulative_turns += dialog_manager.state_tracker.turn_count
                 cumulative_turn_list.append(dialog_manager.state_tracker.turn_count)
                 cumulative_reward_list.append(episode_reward)
-
-    
+            states.append(dialog_manager.state)
+            rewards.append(reward)
+            actions.append(dialog_manager.agent_action)
     res['success_rate'] = float(successes)/simulation_epoch_size
     res['ave_reward'] = float(cumulative_reward)/simulation_epoch_size
     res['ave_turns'] = float(cumulative_turns)/simulation_epoch_size
     res['std_reward'] = np.std(cumulative_reward_list)
     res['std_turns'] = np.std(cumulative_turn_list)
     print ("simulation success rate %s, ave reward %s, ave turns %s" % (res['success_rate'], res['ave_reward'], res['ave_turns']))
-    return res
+    return res, states, rewards, actions
 
 """ Warm_Start Simulation (by Rule Policy) """
 def warm_start_simulation():
@@ -414,10 +437,10 @@ def run_episodes(count, status):
                 
                 cumulative_turns += dialog_manager.state_tracker.turn_count
         
-        # simulation
+        # simulation for DQN
         if agt == 9 or agt == 10 or agt == 11 or agt == 12 and params['trained_model_path'] == None:
             agent.predict_mode = True
-            simulation_res = simulation_epoch(simulation_epoch_size)
+            simulation_res, _, _, _ = simulation_epoch(simulation_epoch_size)
             
             performance_records['success_rate'][episode] = simulation_res['success_rate']
             performance_records['ave_turns'][episode] = simulation_res['ave_turns']
@@ -444,26 +467,60 @@ def run_episodes(count, status):
                 save_model(params['write_model_dir'], agt, best_res['success_rate'], best_model['model'], best_res['epoch'], episode)
                 save_performance_records(params['write_model_dir'], agt, performance_records)
         
+        # simulation for A2C
+        if params['is_dqn']==False and agt==13 and params['trained_model_path'] == None:
+            agent.predict_mode = True
+            simulation_res, states, rewards, actions =  simulation_epoch(simulation_epoch_size)
+            
+            performance_records['success_rate'][episode] = simulation_res['success_rate']
+            performance_records['ave_turns'][episode] = simulation_res['ave_turns']
+            performance_records['ave_reward'][episode] = simulation_res['ave_reward']
+            
+            if simulation_res['success_rate'] >= best_res['success_rate']:
+                if simulation_res['success_rate'] >= success_rate_threshold: # threshold = 0.30
+                    agent.experience_replay_pool = [] 
+                    simulation_epoch(simulation_epoch_size)
+                
+            if simulation_res['success_rate'] > best_res['success_rate']:
+                best_model['model'] = copy.deepcopy(agent)
+                best_res['success_rate'] = simulation_res['success_rate']
+                best_res['ave_reward'] = simulation_res['ave_reward']
+                best_res['ave_turns'] = simulation_res['ave_turns']
+                best_res['epoch'] = episode
+                
+            #agent.clone_dqn = copy.deepcopy(agent.dqn)
+            agent.train(states, actions, rewards)
+            agent.predict_mode = False
+            print ("Simulation success rate %s, Ave reward %s, Ave turns %s, Best success rate %s" % (performance_records['success_rate'][episode], performance_records['ave_reward'][episode], performance_records['ave_turns'][episode], best_res['success_rate']))
+            if episode % save_check_point == 0 and params['trained_model_path'] == None: # save the model every 10 episodes
+                save_model(params['write_model_dir'], agt, best_res['success_rate'], best_model['model'], best_res['epoch'], episode)
+                save_performance_records(params['write_model_dir'], agt, performance_records)
+        
+
         print("Progress: %s / %s, Success rate: %s / %s Avg reward: %.2f Avg turns: %.2f" % (episode+1, count, successes, episode+1, float(cumulative_reward)/(episode+1), float(cumulative_turns)/(episode+1)))
     print("Success rate: %s / %s Avg reward: %.2f Avg turns: %.2f" % (successes, count, float(cumulative_reward)/count, float(cumulative_turns)/count))
     status['successes'] += successes
     status['count'] += count
     
-    if agt == 9 or agt == 10 or agt == 11 or agt == 12 and params['trained_model_path'] == None:
+    if agt == 9 or agt == 10 or agt == 11 or agt == 12 or agt==13 and params['trained_model_path'] == None:
         save_model(params['write_model_dir'], agt, float(successes)/count, best_model['model'], best_res['epoch'], count)
         save_performance_records(params['write_model_dir'], agt, performance_records)
 
-def test_episodes(num_runs, status):
+def test_episodes(num_runs, status, is_dqn):
     ## load saved best model
     ## agent best, params
     checkpoint = load_model(params["final_checkpoint_path"])
-    agent.dqn = copy.deepcopy(checkpoint["model"])
+    if is_dqn:
+        agent.dqn = copy.deepcopy(checkpoint["model"])
+    else:
+        agent.actor_model = copy.deepcopy(checkpoint['actor_model'])
+        agent.critic_model = copy.deepcopy(checkpoint['critic_model'])
     num_episodes = 10000
     average_success_rate = 0
     average_reward = 0
     average_turns = 0
     for i in range(num_runs):
-        simulation_res = simulation_epoch(num_episodes)
+        simulation_res, _, _, _ = simulation_epoch(num_episodes)
         average_success_rate += simulation_res['success_rate']
         average_reward += simulation_res['ave_reward']
         average_turns += simulation_res['ave_turns']
@@ -474,4 +531,4 @@ def test_episodes(num_runs, status):
 if not params['test_mode']:
     run_episodes(num_episodes, status)
 else:
-    test_episodes(1, status)
+    test_episodes(1, status, params['is_dqn'])

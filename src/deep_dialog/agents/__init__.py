@@ -4,3 +4,4 @@ from .agent_dqn import *
 from .agent_dqn_torch import *
 from .agent_dqn_botlzmann import *
 from .agent_bbqn import *
+from .agent_a2c import *
