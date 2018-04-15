@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-python adverserialA2C.py \
-        --discriminator_lr 1e-3\
+python A2C.py \
         --actor_lr 5e-4\
         --critic_lr 1e-3\
         --n 50\
