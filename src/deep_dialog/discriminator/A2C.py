@@ -24,7 +24,7 @@ import pickle as pkl
 import math
 
 
-class AdverserialA2C():
+class A2C():
 	def __init__(self, env, args):
 		self.env = env
 		self.args = args
@@ -153,8 +153,6 @@ class AdverserialA2C():
 		total_act_loss = []
 		total_crit_loss = []
 		all_rewards = []
-		adverserial_rewards = []
-
 
 		## train
 		for episode in range(self.args.num_episodes):
@@ -174,54 +172,9 @@ class AdverserialA2C():
 			actor_loss = self.actor.train_on_batch(states, act_target)
 			critic_loss = self.critic.train_on_batch(states, crit_target)
 
-			## sample from an expert episode and the current simulated episode
-			## in Goodfellow's original paper, he does it k times
-			expert_states, expert_actions, _ = AdverserialA2C.generate_expert_episode(self.expert, self.env)
-			sampled_expert_index = np.random.randint(0, len(expert_states))
-			one_hot_expert_action = np.zeros((1, self.nA))
-			one_hot_expert_action[:,expert_actions[sampled_expert_index]] = 1
-			sampled_expert_state = np.array(expert_states[sampled_expert_index])
-			sampled_expert_state = np.expand_dims(sampled_expert_state, 0)
-			sampled_expert_example = np.concatenate((sampled_expert_state, one_hot_expert_action), axis=1)
-			sampled_simulated_index = np.random.randint(0, len(states))
-			one_hot_simulated_action = np.zeros((1,self.nA))
-			one_hot_simulated_action[:,actions[sampled_simulated_index]] = 1
-			sampled_simulated_state = states[sampled_simulated_index]
-			sampled_simulated_state = np.expand_dims(sampled_simulated_state,0)
-			sampled_simulated_example = np.concatenate((sampled_simulated_state, one_hot_simulated_action), axis=1)
-
-
-			## train discriminator
-			d_loss_real = self.discriminator.train_on_batch(sampled_expert_example, np.ones((self.args.discriminator_batch_size, 1)))
-			d_loss_fake = self.discriminator.train_on_batch(sampled_simulated_example, np.zeros((self.args.discriminator_batch_size, 1)))
-			d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
-
-			## compute gan rewards
-			## call predict on a batch of the current simulated  episodes to get the class value
-			state_action_pairs = []
-			for s,a in zip(states, actions):
-				one_hot = np.zeros(self.nA)
-				one_hot[a] = 1
-				concat_s_a = np.concatenate((s, one_hot))
-				state_action_pairs.append(concat_s_a)
-			probability_simulation = self.discriminator.predict(np.array(state_action_pairs))
-			gan_rewards = (-np.log(1-probability_simulation)).flatten().tolist()
-
-			''' Train gan actor-critic network '''
-			gan_values = self.compute_baseline(states, isgan=True)
-			gan_discounted_rewards = self.get_value_reward(states, gan_rewards, gan_values)
-			gan_act_target = np.zeros((len(states), self.nA))
-			gan_act_target[np.arange(len(states)), np.array(actions)] = (np.array(gan_discounted_rewards)
-																	 - np.array(gan_values))
-			gan_critic_target = np.array(gan_discounted_rewards)
-			gan_actor_loss = self.actor.train_on_batch(states, gan_act_target)
-			gan_critic_loss = self.gan_critic.train_on_batch(states, gan_critic_target)
-
-
-			total_act_loss.append(actor_loss + gan_actor_loss)
-			total_crit_loss.append(critic_loss + gan_critic_loss)
+			total_act_loss.append(actor_loss)
+			total_crit_loss.append(critic_loss)
 			all_rewards.append(np.sum(rewards) * 1e2)
-			adverserial_rewards.append(np.sum(gan_rewards))
 
 			if (episode + 1) % self.args.log_every == 0:
 				if self.args.verbose:
@@ -231,7 +184,6 @@ class AdverserialA2C():
 				total_act_loss = []
 				total_crit_loss = []
 				all_rewards = []
-				adverserial_rewards = []
 
 			if (not self.args.trial) and (episode + 1) % self.args.eval_after == 0:
 				if self.args.verbose:
@@ -239,40 +191,6 @@ class AdverserialA2C():
 				avg_reward, std_reward = self.test_episode()
 				print("Test Reward:{0} +/- {1}".format(avg_reward, std_reward))
 				self.actor.save_weights(os.path.join(self.args.model_path, str(episode + 1)))
-
-	@staticmethod
-	def generate_expert_episode(model, env):
-		# Generates an episode by running the given model on the given env.
-		# Returns:
-		# - a list of states, indexed by time step
-		# - a list of actions, indexed by time step
-		# - a list of rewards, indexed by time step
-		states = []
-		actions = []
-		rewards = []
-
-		current_state = env.reset()
-		is_terminal = False
-		while not is_terminal:
-			action_distribution = model.predict(np.expand_dims(current_state, 0))
-			action = np.random.choice(env.action_space.n, 1,
-									  p=action_distribution.squeeze(0))[0]
-			next_state, reward, is_terminal, _ = env.step(action)
-			states.append(current_state)
-			actions.append(action)
-			rewards.append(reward)
-			current_state = next_state
-
-		return states, actions, rewards
-
-	## obtain training dataset from expert policy
-	def run_expert(self):
-		self.discriminator_training_data = []
-		# Generates an episode by running the expert policy on the given env.
-		for i in range(self.args.num_expert_episodes):
-			states, actions, _ = AdverserialA2C.generate_expert_episode(self.expert, self.env)
-			for tuple in zip(states, actions):
-				self.discriminator_training_data.append(tuple)
 
 	def test(self):
 		trained_episodes = sorted([int(ep) for ep in os.listdir(self.args.model_path)])
@@ -312,7 +230,7 @@ def parse_arguments():
 						default='LunarLander-v2-config.json',
 						help="Path to the model config file.")
 	parser.add_argument('--result_path', dest='result_path', type=str,
-						default='adverserial_a2c_keras',
+						default='a2c_keras',
 						help="Path to the model.")
 	parser.add_argument('--resume', dest='resume', type=int, default=0,
 						help="Resume the training from last checkpoint")
@@ -356,9 +274,6 @@ def parse_arguments():
 	parser.add_argument('--optimizer', type=str, dest='optimizer',
 						default='adam', help="Optimizer to be Used")
 	parser.add_argument('--actor_lr', dest='actor_lr', type=float, default=5e-4)
-	parser.add_argument('--discriminator_lr', dest='discriminator_lr', type=float, default=5e-4)
-	parser.add_argument('--num-expert-episodes', dest='num_expert_episodes', type=int, default=50)
-	parser.add_argument('--discriminator-batch-size', dest='discriminator_batch_size', default=1)
 
 	args = parser.parse_args()
 
@@ -366,12 +281,12 @@ def parse_arguments():
 		os.makedirs(args.result_path)
 
 	args.model_path = os.path.join(args.result_path,
-								   'adverserial_a2c_model' + str(args.run) + '_' + str(args.n))
+								   'a2c_model' + str(args.run) + '_' + str(args.n))
 
 	if not os.path.exists(args.model_path):
 		os.makedirs(args.model_path)
 
-	args.plot_path = os.path.join(args.result_path, 'adverserial_a2c_plot' + str(args.run) +
+	args.plot_path = os.path.join(args.result_path, 'a2c_plot' + str(args.run) +
 								  '_' + str(args.n) + '.png')
 
 	return args
@@ -383,7 +298,7 @@ def main(args):
 	env = gym.make('LunarLander-v2')
 	env.seed(args.seed)
 
-	a2c = AdverserialA2C(env, args)
+	a2c = A2C(env, args)
 
 	if args.mode == 'train':
 		a2c.train()
