@@ -292,12 +292,12 @@ def save_model(path, agt, success_rate, agent, best_epoch, cur_epoch, is_dqn=Fal
     filename = 'agt_%s_%s_%s_%.5f.p' % (agt, best_epoch, cur_epoch, success_rate)
     filepath = os.path.join(path, filename)
     checkpoint = {}
-    ipdb.set_trace()
+    #ipdb.set_trace()
     if agt == 9: checkpoint['model'] = copy.deepcopy(agent.dqn.model)
     if agt == 10 or agt == 11 or agt == 12: checkpoint['model'] = copy.deepcopy(agent.dqn)
     if agt==13 and is_dqn==False:
-        checkpoint['actor_model'] = copy.deepcopy(agent.actor_model)
-        checkpoint['critic_model'] = copy.deepcopy(agent.critic_model)
+        checkpoint['actor_model'] = agent.actor_model
+        checkpoint['critic_model'] = agent.critic_model
     checkpoint['params'] = params
     try:
         pickle.dump(checkpoint, open(filepath, "wb"))
@@ -345,7 +345,9 @@ def simulation_epoch(simulation_epoch_size):
         episode_over = False
         episode_reward = 0
         while(not episode_over):
-            episode_over, reward = dialog_manager.next_turn()
+            temp, act = dialog_manager.next_turn()
+            episode_over = temp[0]
+            reward = temp[1]
             cumulative_reward += reward
             episode_reward += reward
             if episode_over:
@@ -358,7 +360,7 @@ def simulation_epoch(simulation_epoch_size):
                 cumulative_reward_list.append(episode_reward)
             states.append(dialog_manager.state)
             rewards.append(reward)
-            actions.append(dialog_manager.agent_action)
+            actions.append(act)
     res['success_rate'] = float(successes)/simulation_epoch_size
     res['ave_reward'] = float(cumulative_reward)/simulation_epoch_size
     res['ave_turns'] = float(cumulative_turns)/simulation_epoch_size
@@ -426,7 +428,9 @@ def run_episodes(count, status):
         episode_over = False
         
         while(not episode_over):
-            episode_over, reward = dialog_manager.next_turn()
+            temp, act = dialog_manager.next_turn()
+            episode_over = temp[0]
+            reward = temp[1]
             cumulative_reward += reward
                 
             if episode_over:

@@ -109,10 +109,15 @@ class AgentA2C(Agent):
         fc1 = Dense(50, input_shape=(self.state_dimension,),activation='relu',
                 kernel_initializer=VarianceScaling(mode='fan_avg',
                     distribution='normal'))
-        fc3 = Dense(self.num_actions, activation='relu',
+        fc2 = Dense(50, activation='relu',
+                kernel_initializer=VarianceScaling(mode='fan_avg',
+                    distribution='normal'))
+
+        fc3 = Dense(self.num_actions, activation='linear',
                 kernel_initializer=VarianceScaling(mode='fan_avg',
                     distribution='normal'))
         model.add(fc1)
+        model.add(fc2)
         model.add(fc3)
         model.compile(loss='mse',optimizer=Adam(lr=self.actor_lr))
         self.actor_model = model
@@ -244,7 +249,7 @@ class AgentA2C(Agent):
             ipdb.set_trace()
         act_slot_response = copy.deepcopy(
                 self.feasible_actions[np.argmax(self.action[0])])
-        return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}
+        return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}, self.action[0]
 
     def rule_policy(self):
         """ Rule Policy """
@@ -306,7 +311,7 @@ class AgentA2C(Agent):
         v_end = np.zeros(T)
         gain = np.zeros(T)
         advantage = np.zeros(T)
-        states = [self.prepare_state_representation(x) for x in states]
+        #states = [self.prepare_state_representation(x) for x in states]
         for t in reversed(range(len(rewards)-1)):
             if t + self.n >= T:
                 v_end[t] = 0
@@ -323,9 +328,10 @@ class AgentA2C(Agent):
         return advantage
   
     def train(self, states, actions, rewards, gamma=0.99):
+        states = [self.prepare_state_representation(x) for x in states]
         advantage = self.get_advantage(states, rewards)
 
-        ipdb.set_trace()
+        #ipdb.set_trace()
         advantage = advantage.reshape(-1,1)
         actions = np.asarray(actions)
 
