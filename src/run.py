@@ -35,7 +35,7 @@ import numpy as np
 from deep_dialog.dialog_system import DialogManager, text_to_dict
 from deep_dialog.agents import AgentCmd, InformAgent, RequestAllAgent, \
         RandomAgent, EchoAgent, RequestBasicsAgent, \
-        AgentDQN, AgentDQNTorch, AgentDQNBoltzmann, AgentBBQN, AgentA2C
+        AgentDQN, AgentDQNTorch, AgentDQNBoltzmann, AgentBBQN, AgentA2C, AgentAdverserialA2C
 from deep_dialog.usersims import RuleSimulator
 
 from deep_dialog import dialog_config
@@ -106,9 +106,12 @@ if __name__ == "__main__":
     parser.add_argument('--target_sample_type', dest='target_sample_type', default='map', type=str, help='type of sampling for target q-network')
     parser.add_argument('--lrate', dest='lrate', default=0.0005, type=float, help='learning rate')
     parser.add_argument('--actor_lr', dest='actor_lr', default=0.0005, type=float, help='actor learning rate')
-    parser.add_argument('--critic_lr', dest='critic_lr', default=0.0005, type=float, help='critic learning rate')
+    parser.add_argument('--critic_lr', dest='critic_lr', default=0.001, type=float, help='critic learning rate')
+    parser.add_argument('--gan_critic_lr', dest='gan_critic_lr', default=0.001, type=float, help='adverserial critic learning rate')
+    parser.add_argument('--discriminator_lr', dest='discriminator_lr', default=0.0005)
     parser.add_argument('--n', dest='n', default=50, type=int, help='critics N')
     parser.add_argument('--is_dqn', dest='is_dqn', default=False, type=bool, help='Train DQN or A2C')
+
 
     args = parser.parse_args()
     params = vars(args)
@@ -172,6 +175,7 @@ agent_params['cmd_input_mode'] = params['cmd_input_mode']
 agent_params['lrate'] = params['lrate']
 agent_params['actor_lr'] = params['actor_lr']
 agent_params['critic_lr'] = params['critic_lr']
+agent_params['gan_critic_lr'] = params['gan_critic_lr']
 ## if there are additional agent parameters to be added for our implementation
 
 if agt == 0:
@@ -197,8 +201,11 @@ elif agt == 12:
    
 if params['is_dqn']==False:
     print "Training for A2C Now..."
-    agt = 13
-    agent = AgentA2C(movie_kb, act_set, slot_set, agent_params)
+    if agt == 13:
+        agent = AgentA2C(movie_kb, act_set, slot_set, agent_params)
+    elif agt == 14:
+        agent = AgentAdverserialA2C(movie_kb, act_set, slot_set, agent_params)
+
 ################################################################################
 #    Add your agent here
 ################################################################################
@@ -472,7 +479,7 @@ def run_episodes(count, status):
                 save_performance_records(params['write_model_dir'], agt, performance_records)
         
         # simulation for A2C
-        if params['is_dqn']==False and agt==13 and params['trained_model_path'] == None:
+        if params['is_dqn']==False and (agt==13 or agt == 14) and params['trained_model_path'] == None:
             agent.predict_mode = True
             simulation_res, states, rewards, actions =  simulation_epoch(simulation_epoch_size)
             
@@ -506,7 +513,7 @@ def run_episodes(count, status):
     status['successes'] += successes
     status['count'] += count
     
-    if agt == 9 or agt == 10 or agt == 11 or agt == 12 or agt==13 and params['trained_model_path'] == None:
+    if agt == 9 or agt == 10 or agt == 11 or agt == 12 or agt==13 or agt==14 and params['trained_model_path'] == None:
         save_model(params['write_model_dir'], agt, float(successes)/count, best_model['model'], best_res['epoch'], count)
         save_performance_records(params['write_model_dir'], agt, performance_records)
 

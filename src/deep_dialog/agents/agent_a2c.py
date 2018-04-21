@@ -17,7 +17,8 @@ from keras.models import Sequential,Model
 from keras.layers import Dense,Input,Lambda
 from keras.optimizers import Adam
 import ipdb
-
+from constants import *
+import random
 import gym
 
 import matplotlib

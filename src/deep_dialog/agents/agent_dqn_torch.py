@@ -2,33 +2,32 @@ import random, copy, json
 import cPickle as pickle
 import numpy as np
 from constants import *
-
-from deep_dialog import dialog_config
-from collections import deque
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
+import keras
+from keras.initializers import VarianceScaling
+from keras import regularizers
+from keras.models import Sequential, Model
+from keras.layers import Dense, Input, Lambda
+from keras.optimizers import Adam
+from constants import *
 from collections import namedtuple
 import ipdb
-#from torch.autograd import Variable
-
 from agent import Agent
-## so you can remove extreeous agent information in the dqn-pytorch file
-from deep_dialog.qlearning.dqn_pytorch import MultiLayerQNetwork as DQN
+from deep_dialog import dialog_config
+from collections import deque
 
 
 class Replay_Memory():
-    def __init__(self, memory_size=1000, burn_in=200):
-        self.memory_size = memory_size
-        self.burn_in = burn_in
-        self.memory = deque(maxlen=self.memory_size)
+	def __init__(self, memory_size=1000, burn_in=200):
+		self.memory_size = memory_size
+		self.burn_in = burn_in
+		self.memory = deque(maxlen=self.memory_size)
 
-    def sample_batch(self, batch_size=32):
-        return random.sample(self.memory, batch_size)
+	def sample_batch(self, batch_size=32):
+		return random.sample(self.memory, batch_size)
 
-    def append(self, transition):
-        self.memory.append(transition)
+	def append(self, transition):
+		self.memory.append(transition)
+
 
 class AgentDQNTorch(Agent):
 	def __init__(self, movie_dict=None, act_set=None, slot_set=None, params=None):
@@ -43,9 +42,8 @@ class AgentDQNTorch(Agent):
 		self.feasible_actions = dialog_config.feasible_actions
 		self.num_actions = len(self.feasible_actions)
 
-
 		# rl specific parameters
-		#epsilon:
+		# epsilon:
 		self.params = params
 		self.epsilon = params['epsilon']
 		#
@@ -54,35 +52,53 @@ class AgentDQNTorch(Agent):
 		self.agent_act_level = params['agent_act_level']
 		# experience replay
 		self.experience_replay_pool_size = params.get('experience_replay_pool_size', 1000)
-		self.experience_replay_pool = [] #Replay_Memory(self.experience_replay_pool_size)
+		self.experience_replay_pool = []  # Replay_Memory(self.experience_replay_pool_size)
 		self.hidden_size = params.get('dqn_hidden_size', 60)
 		# gamma : discount factor
 		self.gamma = params.get('gamma', 0.9)
 		self.predict_mode = params.get('predict_mode', False)
+		self.learning_rate = self.params.get("lrate", 0.0001)
+		self.reg_cost = self.params.get('reg_cost', 1e-3)
 		## warm start:
 		self.warm_start = params.get('warm_start', 0)
 
 		self.max_turn = params['max_turn'] + 4
 		self.state_dimension = 2 * self.act_cardinality + 7 * self.slot_cardinality + 3 + self.max_turn
 
-		# default we use a 2-layer perceptron, thier code uses a 1 hidden layer
-		self.dqn = DQN(self.state_dimension, self.hidden_size, self.hidden_size, self.num_actions)
-                if use_cuda:
-                    self.dqn.cuda()
-                self.clone_dqn = copy.deepcopy(self.dqn)
-                if use_cuda:
-                    self.clone_dqn = self.clone_dqn.cuda()
-                self.transition = namedtuple('transition', ('state', 'action', 'reward', 'next_state', 'is_terminal'))
+		## TODO: keras version of DQN
+		self.build_qnetwork_model()
+		self.clone_dqn = copy.deepcopy(self.dqn)
+
+
+		self.transition = namedtuple('transition', ('state', 'action', 'reward', 'next_state', 'is_terminal'))
 
 		self.cur_bellman_err = 0
 
-
 		## load a model if present
 		if params['trained_model_path'] != None:
-			self.dqn = copy.deepcopy(self.load_trained_DQN(params['trained_model_path']))
+			self.dqn = copy.deepcopy(self.dqn.load((params['trained_model_path'])))
 			self.clone_dqn = copy.deepcopy(self.dqn)
 			self.predict_mode = True
 			self.warm_start = 2
+
+	def build_qnetwork_model(self):
+		model = Sequential()
+		fc1 = Dense(self.hidden_size, input_shape=(self.state_dimension,), activation='relu',
+					kernel_initializer=VarianceScaling(mode='fan_avg', distribution='normal'),
+					kernel_regularizer=regularizers.l2(self.reg_cost))
+		fc2 = Dense(self.hidden_size, activation='relu',
+					kernel_initializer=VarianceScaling(mode='fan_avg', distribution='normal'),
+					kernel_regularizer=regularizers.l2(self.reg_cost))
+
+		fc3 = Dense(self.num_actions, activation='linear',
+					kernel_initializer=VarianceScaling(mode='fan_avg', distribution='normal'),
+					kernel_regularizer=regularizers.l2(self.reg_cost))
+		model.add(fc1)
+		model.add(fc2)
+		model.add(fc3)
+		model.compile(loss='mse', optimizer=Adam(lr=self.learning_rate))
+		self.dqn = model
+
 
 	def initialize_episode(self):
 		""" Initialize a new episode. This function is called every time a new episode is run. """
@@ -236,14 +252,9 @@ class AgentDQNTorch(Agent):
 		return None
 
 	def return_greedy_action(self, state_representation):
-		state_var = variable(torch.FloatTensor(state_representation).unsqueeze(0))
-		if torch.cuda.is_available():
-			state_var = state_var.cuda()
-		qvalues = self.dqn(state_var)
-		action =  qvalues.data.max(1)[1]
+		qvalues = self.dqn.predict(state_representation)
+		action = qvalues.data.max(1)[1]
 		return action[0]
-
-
 
 	def run_policy(self, representation):
 		""" epsilon-greedy policy """
@@ -262,67 +273,33 @@ class AgentDQNTorch(Agent):
 
 	def update_model_with_replay(self, batch, batch_size):
 		batch = self.transition(*zip(*batch))
-		state_batch = variable(torch.FloatTensor(batch.state))
-		action_batch = variable(torch.LongTensor(batch.action))
-		if torch.cuda.is_available():
-			state_batch = state_batch.cuda()
-			action_batch = action_batch.cuda()
-		prediction = self.dqn(state_batch).gather(1, action_batch.view(batch_size, 1))
-		target = variable(torch.zeros(batch_size))
-		next_state_batch = variable(torch.FloatTensor(batch.next_state), volatile=True)
-		nqvalues = self.clone_dqn(next_state_batch)
+		state_batch = batch.state
+		action_batch = np.asarray(batch.action)
+		prediction = self.dqn.predict(state_batch)
+		# target = variable(torch.zeros(batch_size))
+		next_state_batch = np.asarray(batch.next_state)
+		nqvalues = self.clone_dqn.predict(next_state_batch)
 		nqvalues = nqvalues.max(1)[0]
-		nqvalues.volatile = False
-		mask = torch.FloatTensor(batch.is_terminal)
-		reward = torch.FloatTensor(batch.reward)
+		mask = np.asarray(batch.is_terminal)
+		reward = np.asarray(batch.reward)
 		temp = self.gamma * nqvalues
-		#ipdb.set_trace()
-		target = variable(reward) + temp.mul(variable(1 - mask))
-		loss = self.loss_function(prediction, target)
-		self.optimizer.zero_grad()
-		loss.backward()
-		self.optimizer.step()
+		# ipdb.set_trace()
+		target = reward + temp*(1 - mask)
+		loss = self.dqn.train_on_batch(prediction, target)
 		return loss
 
-
-
 	def train(self, batch_size=1, num_batches=100):
-		""" Train DQN with experience replay """
-		optimizer_type = self.params.get("optimizer", "adam")
-		learning_rate = self.params.get("lrate", 0.0001)
-		loss_function_type = self.params.get("loss_function", "mse")
-		# l2 regularization weight decay
-		reg_cost = self.params.get('reg_cost', 1e-3)
-
-
-		## create pytorch optimizer object
-		if optimizer_type == 'rmsprop':
-			self.optimizer = optim.RMSprop(self.dqn.parameters(), lr=learning_rate, weight_decay=reg_cost)
-		else:
-			self.optimizer = optim.Adam(self.dqn.parameters(), lr=learning_rate, weight_decay=reg_cost)
-
-		## define loss function
-		if loss_function_type == "hubert":
-			self.loss_function = nn.SmoothL1Loss()
-		else:
-			self.loss_function = nn.MSELoss()
-
-
 		for iter_batch in range(num_batches):
 			self.cur_bellman_err = 0
 			for iter in range(len(self.experience_replay_pool) / (batch_size)):
 				batch = [random.choice(self.experience_replay_pool) for i in xrange(batch_size)]
-				# batch_struct = self.dqn.singleBatch(batch, {'gamma': self.gamma}, self.clone_dqn)
-				# self.cur_bellman_err += batch_struct['cost']['total_cost']
 				## they are also doing L2 regularization term apart from the MSE loss, always using the target qnetwork and -1e-3 gradient clipping
 				## thier learning rate is 0.001
 				mse_loss = self.update_model_with_replay(batch, batch_size)
-				self.cur_bellman_err += mse_loss.data.cpu().numpy().sum()
-
+				self.cur_bellman_err += mse_loss.sum()
 
 			print ("cur bellman err %.4f, experience replay pool %s" % (
-			float(self.cur_bellman_err) / len(self.experience_replay_pool), len(self.experience_replay_pool)))
-
+				float(self.cur_bellman_err) / len(self.experience_replay_pool), len(self.experience_replay_pool)))
 
 	################################################################################
 	#    Debug Functions
@@ -341,13 +318,3 @@ class AgentDQNTorch(Agent):
 		""" Load the experience replay pool from a file"""
 
 		self.experience_replay_pool = pickle.load(open(path, 'rb'))
-
-	def load_trained_DQN(self, path):
-		""" Load the trained DQN from a file """
-		model = torch.load(path)
-		# print "trained DQN Parameters:", json.dumps(trained_file['params'], indent=2)
-		return model
-
-
-
-
