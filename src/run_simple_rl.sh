@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 CUDA_VISIBLE_DEVICES=0 python run.py --agt 10 --usr 1 --max_turn 40 \
 	      --movie_kb_path ./deep_dialog/data/movie_kb.1k.p \
 	      --dqn_hidden_size 80 \

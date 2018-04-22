@@ -29,7 +29,7 @@ class Replay_Memory():
 		self.memory.append(transition)
 
 
-class AgentDQNTorch(Agent):
+class AgentDQNKeras(Agent):
 	def __init__(self, movie_dict=None, act_set=None, slot_set=None, params=None):
 
 		## parameters associated with dialogue action and slot filling
@@ -67,7 +67,8 @@ class AgentDQNTorch(Agent):
 
 		## TODO: keras version of DQN
 		self.build_qnetwork_model()
-		self.clone_dqn = copy.deepcopy(self.dqn)
+		self.clone_dqn = keras.models.clone_model(self.dqn)
+		self.clone_dqn.set_weights(self.dqn.get_weights())
 
 
 		self.transition = namedtuple('transition', ('state', 'action', 'reward', 'next_state', 'is_terminal'))
@@ -252,8 +253,9 @@ class AgentDQNTorch(Agent):
 		return None
 
 	def return_greedy_action(self, state_representation):
-		qvalues = self.dqn.predict(state_representation)
-		action = qvalues.data.max(1)[1]
+		state_tensor = np.asarray(state_representation)
+		qvalues = self.dqn.predict(state_tensor)
+		action = np.argmax(qvalues)
 		return action[0]
 
 	def run_policy(self, representation):
@@ -273,7 +275,7 @@ class AgentDQNTorch(Agent):
 
 	def update_model_with_replay(self, batch, batch_size):
 		batch = self.transition(*zip(*batch))
-		state_batch = batch.state
+		state_batch = np.asarray(batch.state)
 		action_batch = np.asarray(batch.action)
 		prediction = self.dqn.predict(state_batch)
 		# target = variable(torch.zeros(batch_size))
@@ -296,7 +298,7 @@ class AgentDQNTorch(Agent):
 				## they are also doing L2 regularization term apart from the MSE loss, always using the target qnetwork and -1e-3 gradient clipping
 				## thier learning rate is 0.001
 				mse_loss = self.update_model_with_replay(batch, batch_size)
-				self.cur_bellman_err += mse_loss.sum()
+				self.cur_bellman_err += mse_loss
 
 			print ("cur bellman err %.4f, experience replay pool %s" % (
 				float(self.cur_bellman_err) / len(self.experience_replay_pool), len(self.experience_replay_pool)))

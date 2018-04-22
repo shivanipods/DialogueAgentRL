@@ -1,0 +1,3 @@
+=> in the dqn implementation, we do not ever change the cloned model
+=> experience replay is not cleaned and grows with every new simulated episode but is spiked
+

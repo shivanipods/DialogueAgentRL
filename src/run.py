@@ -35,7 +35,7 @@ import numpy as np
 from deep_dialog.dialog_system import DialogManager, text_to_dict
 from deep_dialog.agents import AgentCmd, InformAgent, RequestAllAgent, \
         RandomAgent, EchoAgent, RequestBasicsAgent, \
-        AgentDQN, AgentDQNTorch, AgentDQNBoltzmann, AgentBBQN, AgentA2C, AgentAdverserialA2C
+        AgentDQN, AgentDQNKeras, AgentDQNBoltzmann, AgentBBQN, AgentA2C, AgentAdverserialA2C
 from deep_dialog.usersims import RuleSimulator
 
 from deep_dialog import dialog_config
@@ -193,7 +193,7 @@ elif agt == 5:
 elif agt == 9:
     agent = AgentDQN(movie_kb, act_set, slot_set, agent_params)
 elif agt == 10:
-    agent = AgentDQNTorch(movie_kb, act_set, slot_set, agent_params)
+    agent = AgentDQNKeras(movie_kb, act_set, slot_set, agent_params)
 elif agt == 11:
     agent = AgentDQNBoltzmann(movie_kb, act_set, slot_set, agent_params)
 elif agt == 12:

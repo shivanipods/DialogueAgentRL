@@ -46,7 +46,9 @@ class DialogManager:
         ########################################################################
 
         self.state = self.state_tracker.get_state_for_agent() ## this code is tracking the dialogue state
-        self.agent_action, actions = self.agent.state_to_action(self.state)
+        self.agent_action = self.agent.state_to_action(self.state)
+        ## Earlier this code was :
+        # self.agent_action, action = self.agent.state_to_action(self.state)
         
         ########################################################################
         #   Register AGENT action with the state_tracker
@@ -77,7 +79,7 @@ class DialogManager:
         if self.is_dqn and record_training_data:
             self.agent.register_experience_replay_tuple(self.state, self.agent_action, self.reward, self.state_tracker.get_state_for_agent(), self.episode_over)
         
-        return (self.episode_over, self.reward), actions
+        return (self.episode_over, self.reward)
 
     
     def reward_function(self, dialog_status):
