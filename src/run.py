@@ -32,7 +32,8 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 import cPickle as pickle
 import ipdb
 import numpy as np
-
+import tensorflow as tf
+tf.logging.set_verbosity(tf.logging.ERROR)
 from deep_dialog.dialog_system import DialogManager, text_to_dict
 from deep_dialog.agents import AgentCmd, InformAgent, RequestAllAgent, \
         RandomAgent, EchoAgent, RequestBasicsAgent, \
@@ -45,6 +46,7 @@ from deep_dialog.dialog_config import *
 from deep_dialog.nlu import nlu
 from deep_dialog.nlg import nlg
 import keras
+
 
 
 
@@ -305,7 +307,7 @@ def save_model(path, agt, success_rate, agent, best_epoch, cur_epoch, is_dqn=Fal
     if agt == 9: checkpoint['model'] = copy.deepcopy(agent.dqn.model)
     if agt == 10 or agt == 11 or agt == 12:
         checkpoint['model'] = agent.dqn
-        agent.save(filepath)
+        agent.dqn.save(filepath)
     if agt==13 and is_dqn==False:
         checkpoint['actor_model'] = agent.actor_model
         checkpoint['critic_model'] = agent.critic_model
