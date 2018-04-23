@@ -6,3 +6,4 @@ from .agent_dqn_botlzmann import *
 from .agent_bbqn import *
 from .agent_a2c import *
 from .agent_a2c_adverserial import *
+from .agent_recurrent import *

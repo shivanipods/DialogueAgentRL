@@ -303,7 +303,7 @@ def save_model(path, agt, success_rate, agent, best_epoch, cur_epoch, is_dqn=Fal
     checkpoint = {}
     #ipdb.set_trace()
     if agt == 9: checkpoint['model'] = copy.deepcopy(agent.dqn.model)
-    if agt == 10 or agt == 11 or agt == 12: checkpoint['model'] = agent.dqn
+    if agt == 10 or agt == 11 or agt == 12: checkpoint['model'] = agent
     if agt==13 and is_dqn==False:
         checkpoint['actor_model'] = agent.actor_model
         checkpoint['critic_model'] = agent.critic_model
@@ -466,7 +466,7 @@ def run_episodes(count, status):
                     simulation_epoch(simulation_epoch_size)
                 
             if simulation_res['success_rate'] > best_res['success_rate']:
-                best_model['model'] = copy.deepcopy(agent)
+                best_model['model'] = agent.dqn
                 best_res['success_rate'] = simulation_res['success_rate']
                 best_res['ave_reward'] = simulation_res['ave_reward']
                 best_res['ave_turns'] = simulation_res['ave_turns']
