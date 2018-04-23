@@ -298,12 +298,14 @@ performance_records['ave_reward'] = {}
 
 """ Save model """
 def save_model(path, agt, success_rate, agent, best_epoch, cur_epoch, is_dqn=False):
-    filename = 'agt_%s_%s_%s_%.5f.p' % (agt, best_epoch, cur_epoch, success_rate)
+    filename = 'agt_%s_%s_%s_%.5f.h5' % (agt, best_epoch, cur_epoch, success_rate)
     filepath = os.path.join(path, filename)
     checkpoint = {}
     #ipdb.set_trace()
     if agt == 9: checkpoint['model'] = copy.deepcopy(agent.dqn.model)
-    if agt == 10 or agt == 11 or agt == 12: checkpoint['model'] = agent
+    if agt == 10 or agt == 11 or agt == 12:
+        checkpoint['model'] = agent.dqn
+        agent.save(filepath)
     if agt==13 and is_dqn==False:
         checkpoint['actor_model'] = agent.actor_model
         checkpoint['critic_model'] = agent.critic_model
