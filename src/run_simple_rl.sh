@@ -4,7 +4,7 @@ CUDA_VISIBLE_DEVICES=0 python run.py --agt 10 --usr 1 --max_turn 40 \
 	      --dqn_hidden_size 80 \
 	      --experience_replay_pool_size 1000 \
 	      --episodes 500 \
-	      --simulation_epoch_size 50 \
+	      --simulation_epoch_size 100 \
 	      --write_model_dir ./deep_dialog/checkpoints/dqn_keras/ \
 	      --run_mode 10 \
 	      --act_level 0 \

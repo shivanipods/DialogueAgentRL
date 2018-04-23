@@ -306,8 +306,11 @@ def save_model(path, agt, success_rate, model_agent, best_epoch, cur_epoch, is_d
     #ipdb.set_trace()
     if agt == 9: checkpoint['model'] = copy.deepcopy(model_agent.dqn.model)
     if agt == 10 or agt == 11 or agt == 12:
-        checkpoint['model'] = model_agent
-        model_agent.save(filepath)
+        # checkpoint['model'] = agent.dqn
+        try:
+            agent.dqn.save(filepath)
+        except:
+            ipdb.set_trace()
     if agt==13 and is_dqn==False:
         checkpoint['actor_model'] = model_agent.actor_model
         checkpoint['critic_model'] = model_agent.critic_model
