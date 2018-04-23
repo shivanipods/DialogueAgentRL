@@ -102,7 +102,7 @@ if __name__ == "__main__":
     parser.add_argument('--trained_model_path', dest='trained_model_path', type=str, default=None, help='the path for trained model')
     parser.add_argument('-o', '--write_model_dir', dest='write_model_dir', type=str, default='./deep_dialog/checkpoints/', help='write model to disk')
     parser.add_argument('--final_checkpoint_path', dest='final_checkpoint_path', type=str, default=None, help='path to the final checkpoint of model to be tested')
-    parser.add_argument('--save_check_point', dest='save_check_point', type=int, default=10, help='number of epochs for saving model')
+    parser.add_argument('--save_check_point', dest='save_check_point', type=int, default=1, help='number of epochs for saving model')
      
     parser.add_argument('--success_rate_threshold', dest='success_rate_threshold', type=float, default=0.3, help='the threshold for success rate')
     
@@ -307,7 +307,10 @@ def save_model(path, agt, success_rate, agent, best_epoch, cur_epoch, is_dqn=Fal
     if agt == 9: checkpoint['model'] = copy.deepcopy(agent.dqn.model)
     if agt == 10 or agt == 11 or agt == 12:
         checkpoint['model'] = agent.dqn
-        agent.dqn.save(filepath)
+        try:
+            agent.dqn.save(filepath)
+        except:
+            ipdb.set_trace()
     if agt==13 and is_dqn==False:
         checkpoint['actor_model'] = agent.actor_model
         checkpoint['critic_model'] = agent.critic_model

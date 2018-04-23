@@ -53,12 +53,29 @@ class A2C():
 			self.actor = keras.models.model_from_json(f.read())
 
 		## create the original critic
-		with open(self.args.model_config_path, 'r') as f:
+		'''
+                with open(self.args.model_config_path, 'r') as f:
 			self.critic = keras.models.model_from_json(f.read())
 		self.critic.pop()
 		self.critic.add(Dense(1, activation='linear', kernel_initializer=kernel))
+                '''
 
-		## create the gan critic
+	        model = Sequential()
+		fc1 = Dense(50, input_shape=(self.nS,),activation='relu',
+			kernel_initializer=VarianceScaling(mode='fan_avg',
+			    distribution='normal'))
+		fc2 = Dense(50, activation='relu',
+			kernel_initializer=VarianceScaling(mode='fan_avg',
+			    distribution='normal'))
+		fc3 = Dense(1, activation='relu',
+			kernel_initializer=VarianceScaling(mode='fan_avg',
+			    distribution='normal'))
+		model.add(fc1)
+		model.add(fc2)
+		model.add(fc3)
+		#model.compile(loss='mse',optimizer=Adam(lr=critic_lr))
+		self.critic = model 	
+                ## create the gan critic
 		with open(self.args.model_config_path, 'r') as f:
 			self.gan_critic = keras.models.model_from_json(f.read())
 		self.gan_critic.pop()
