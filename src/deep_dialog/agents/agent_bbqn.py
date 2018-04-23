@@ -2,7 +2,7 @@ import random, copy
 import random, copy, json
 import cPickle as pickle
 import numpy as np
-from agent_dqn_torch import AgentDQNTorch
+from agent_dqn_keras import AgentDQNKeras
 from agent import Agent
 from deep_dialog.qlearning.bayesianDQN import BayesianMLP
 from deep_dialog.qlearning.utils import *
@@ -10,7 +10,7 @@ from deep_dialog import dialog_config
 from collections import namedtuple
 from constants import *
 
-class AgentBBQN(AgentDQNTorch):
+class AgentBBQN(AgentDQNKeras):
 	def __init__(self, movie_dict=None, act_set=None, slot_set=None, params=None):
 
 		## parameters associated with dialogue action and slot filling

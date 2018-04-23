@@ -57,7 +57,7 @@ class AgentDQNKeras(Agent):
 		# gamma : discount factor
 		self.gamma = params.get('gamma', 0.9)
 		self.predict_mode = params.get('predict_mode', False)
-		self.learning_rate = self.params.get("lrate", 0.0001)
+		self.learning_rate = self.params.get("lrate", 0.005)
 		self.reg_cost = self.params.get('reg_cost', 1e-3)
 		## warm start:
 		self.warm_start = params.get('warm_start', 0)
@@ -220,7 +220,7 @@ class AgentDQNKeras(Agent):
 		self.representation = self.prepare_state_representation(state)
 		self.action = self.run_policy(self.representation)
 		act_slot_response = copy.deepcopy(self.feasible_actions[self.action])
-		return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}
+		return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}, None
 
 	def rule_policy(self):
 		""" Rule Policy """
@@ -253,10 +253,10 @@ class AgentDQNKeras(Agent):
 		return None
 
 	def return_greedy_action(self, state_representation):
-		state_tensor = np.asarray(state_representation)
+		state_tensor= np.expand_dims(np.asarray(state_representation), axis=0)
 		qvalues = self.dqn.predict(state_tensor)
 		action = np.argmax(qvalues)
-		return action[0]
+		return action
 
 	def run_policy(self, representation):
 		""" epsilon-greedy policy """
@@ -277,8 +277,8 @@ class AgentDQNKeras(Agent):
 		batch = self.transition(*zip(*batch))
 		state_batch = np.asarray(batch.state)
 		action_batch = np.asarray(batch.action)
-		prediction = self.dqn.predict(state_batch)
-		# target = variable(torch.zeros(batch_size))
+		targets = self.dqn.predict(state_batch)
+		# prediction = prediction[np.arange(batch_size), action_batch]
 		next_state_batch = np.asarray(batch.next_state)
 		nqvalues = self.clone_dqn.predict(next_state_batch)
 		nqvalues = nqvalues.max(1)[0]
@@ -287,7 +287,9 @@ class AgentDQNKeras(Agent):
 		temp = self.gamma * nqvalues
 		# ipdb.set_trace()
 		target = reward + temp*(1 - mask)
-		loss = self.dqn.train_on_batch(prediction, target)
+		## only replace the relevant actions
+		targets[np.arange(batch_size), action_batch] = target
+		loss = self.dqn.train_on_batch(state_batch, targets)
 		return loss
 
 	def train(self, batch_size=1, num_batches=100):

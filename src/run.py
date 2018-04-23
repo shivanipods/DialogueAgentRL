@@ -28,6 +28,7 @@ RL: python run.py --agt 9 --usr 1 --max_turn 40 --movie_kb_path .\deep_dialog\da
 
 
 import argparse, json, copy, os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 import cPickle as pickle
 import ipdb
 import numpy as np
@@ -43,6 +44,8 @@ from deep_dialog.dialog_config import *
 
 from deep_dialog.nlu import nlu
 from deep_dialog.nlg import nlg
+import keras
+
 
 
 """ 
@@ -110,8 +113,7 @@ if __name__ == "__main__":
     parser.add_argument('--gan_critic_lr', dest='gan_critic_lr', default=0.001, type=float, help='adverserial critic learning rate')
     parser.add_argument('--discriminator_lr', dest='discriminator_lr', default=0.0005)
     parser.add_argument('--n', dest='n', default=50, type=int, help='critics N')
-    parser.add_argument('--is_dqn', dest='is_dqn', default=False, type=bool, help='Train DQN or A2C')
-
+    parser.add_argument("--is_dqn", dest='is_dqn', default=True, action="store_false", help='Train DQN or A2C')
 
     args = parser.parse_args()
     params = vars(args)
@@ -301,10 +303,11 @@ def save_model(path, agt, success_rate, agent, best_epoch, cur_epoch, is_dqn=Fal
     checkpoint = {}
     #ipdb.set_trace()
     if agt == 9: checkpoint['model'] = copy.deepcopy(agent.dqn.model)
-    if agt == 10 or agt == 11 or agt == 12: checkpoint['model'] = copy.deepcopy(agent.dqn)
+    if agt == 10 or agt == 11 or agt == 12: checkpoint['model'] = agent.dqn
     if agt==13 and is_dqn==False:
         checkpoint['actor_model'] = agent.actor_model
         checkpoint['critic_model'] = agent.critic_model
+    ## TODO: Add support for adeversarial dqn
     checkpoint['params'] = params
     try:
         pickle.dump(checkpoint, open(filepath, "wb"))
@@ -391,7 +394,7 @@ def warm_start_simulation():
         episode_over = False
         episode_reward = 0
         while(not episode_over):
-            episode_over, reward = dialog_manager.next_turn()
+            (episode_over, reward),_ = dialog_manager.next_turn()
             cumulative_reward += reward
             episode_reward += reward
             if episode_over:
@@ -468,8 +471,9 @@ def run_episodes(count, status):
                 best_res['ave_reward'] = simulation_res['ave_reward']
                 best_res['ave_turns'] = simulation_res['ave_turns']
                 best_res['epoch'] = episode
-                
-            agent.clone_dqn = copy.deepcopy(agent.dqn)
+
+            agent.clone_dqn = keras.models.clone_model(agent.dqn)
+            agent.clone_dqn.set_weights(agent.dqn.get_weights())
             agent.train(batch_size, 2)
             agent.predict_mode = False
             
@@ -521,6 +525,7 @@ def test_episodes(num_runs, status, is_dqn):
     ## load saved best model
     ## agent best, params
     checkpoint = load_model(params["final_checkpoint_path"])
+    ## TODO: Unsure if this copying trick works for keras implementation
     if is_dqn:
         agent.dqn = copy.deepcopy(checkpoint["model"])
     else:
