@@ -13,6 +13,7 @@ from keras.models import Sequential,load_model, Model
 from keras.layers import Dense, Dropout, Flatten, Multiply, Activation
 from keras.layers import Conv2D, MaxPooling2D, Input, Lambda
 from keras.optimizers import Adam, Adamax, RMSprop
+from keras.initializers import VarianceScaling
 from keras import backend as K
 import gym
 from gym import wrappers
@@ -53,20 +54,30 @@ class AdverserialA2C():
 			self.actor = keras.models.model_from_json(f.read())
 
 		## create the original critic
-		with open(self.args.model_config_path, 'r') as f:
-			self.critic = keras.models.model_from_json(f.read())
-		self.critic.pop()
-		self.critic.add(Dense(1, activation='linear', kernel_initializer=kernel))
+		self.critic = self.build_critic()
 
 		## create the gan critic
-		with open(self.args.model_config_path, 'r') as f:
-			self.gan_critic = keras.models.model_from_json(f.read())
-		self.gan_critic.pop()
-		self.gan_critic.add(Dense(1, activation='linear', kernel_initializer=kernel))
+		self.gan_critic = self.build_critic()
 
 
 		self.n = args.n
 		self.gamma = args.gamma
+
+	def build_critic(self):
+		model = Sequential()
+		fc1 = Dense(50, input_shape=(self.nS,), activation='relu',
+					kernel_initializer=VarianceScaling(mode='fan_avg',
+													   distribution='normal'))
+		fc2 = Dense(50, activation='relu',
+					kernel_initializer=VarianceScaling(mode='fan_avg',
+													   distribution='normal'))
+		fc3 = Dense(1, activation='relu',
+					kernel_initializer=VarianceScaling(mode='fan_avg',
+													   distribution='normal'))
+		model.add(fc1)
+		model.add(fc2)
+		model.add(fc3)
+		return model
 
 	def truncated_discounted_rewards(self, rewards):
 
@@ -132,8 +143,6 @@ class AdverserialA2C():
 			values.append(criticval.squeeze(0)[0])
 		return values
 
-	def compute_discriminator_reward(self, states, actions):
-		return
 
 	def train(self):
 		if self.args.optimizer == "adam":
@@ -177,24 +186,38 @@ class AdverserialA2C():
 			## sample from an expert episode and the current simulated episode
 			## in Goodfellow's original paper, he does it k times
 			expert_states, expert_actions, _ = AdverserialA2C.generate_expert_episode(self.expert, self.env)
-			sampled_expert_index = np.random.randint(0, len(expert_states))
-			one_hot_expert_action = np.zeros((1, self.nA))
-			one_hot_expert_action[:,expert_actions[sampled_expert_index]] = 1
-			sampled_expert_state = np.array(expert_states[sampled_expert_index])
-			sampled_expert_state = np.expand_dims(sampled_expert_state, 0)
-			sampled_expert_example = np.concatenate((sampled_expert_state, one_hot_expert_action), axis=1)
-			sampled_simulated_index = np.random.randint(0, len(states))
-			one_hot_simulated_action = np.zeros((1,self.nA))
-			one_hot_simulated_action[:,actions[sampled_simulated_index]] = 1
-			sampled_simulated_state = states[sampled_simulated_index]
-			sampled_simulated_state = np.expand_dims(sampled_simulated_state,0)
-			sampled_simulated_example = np.concatenate((sampled_simulated_state, one_hot_simulated_action), axis=1)
 
+			expert_set = []
+			simulation_set = []
+			for k in range(self.args.discriminator_batch_size):
+				sampled_expert_index = np.random.randint(0, len(expert_states))
+				one_hot_expert_action = np.zeros(self.nA)
+				one_hot_expert_action[expert_actions[sampled_expert_index]] = 1
+				sampled_expert_state = np.array(expert_states[sampled_expert_index])
+				# sampled_expert_state = np.expand_dims(sampled_expert_state, 0)
+				sampled_expert_example = np.concatenate((sampled_expert_state, one_hot_expert_action), axis=0)
+				expert_set.append(sampled_expert_example)
+				sampled_simulated_index = np.random.randint(0, len(states))
+				one_hot_simulated_action = np.zeros(self.nA)
+				one_hot_simulated_action[actions[sampled_simulated_index]] = 1
+				sampled_simulated_state = states[sampled_simulated_index]
+				# sampled_simulated_state = np.expand_dims(sampled_simulated_state,0)
+				sampled_simulated_example = np.concatenate((sampled_simulated_state, one_hot_simulated_action), axis=0)
+				simulation_set.append(sampled_simulated_example)
+
+			expert_set = np.asarray(expert_set)
+			simulation_set = np.asarray(simulation_set)
+			## combined training data
+			combined_training_data = np.concatenate((expert_set, simulation_set), axis=0)
+			combined_prediction_values = np.concatenate((np.ones((self.args.discriminator_batch_size, 1)) ,
+														 np.zeros((self.args.discriminator_batch_size, 1))), axis=0)
+			p = np.random.permutation(self.args.discriminator_batch_size)
+			combined_training_data = combined_training_data[p]
+			combined_prediction_values = combined_prediction_values[p]
 
 			## train discriminator
-			d_loss_real = self.discriminator.train_on_batch(sampled_expert_example, np.ones((self.args.discriminator_batch_size, 1)))
-			d_loss_fake = self.discriminator.train_on_batch(sampled_simulated_example, np.zeros((self.args.discriminator_batch_size, 1)))
-			d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
+			d_loss, metric = self.discriminator.train_on_batch(combined_training_data, combined_prediction_values)
+
 
 			## compute gan rewards
 			## call predict on a batch of the current simulated  episodes to get the class value
@@ -358,7 +381,7 @@ def parse_arguments():
 	parser.add_argument('--actor_lr', dest='actor_lr', type=float, default=5e-4)
 	parser.add_argument('--discriminator_lr', dest='discriminator_lr', type=float, default=5e-4)
 	parser.add_argument('--num-expert-episodes', dest='num_expert_episodes', type=int, default=50)
-	parser.add_argument('--discriminator-batch-size', dest='discriminator_batch_size', default=1)
+	parser.add_argument('--discriminator-batch-size', dest='discriminator_batch_size', default=10)
 
 	args = parser.parse_args()
 
