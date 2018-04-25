@@ -33,7 +33,7 @@ import cPickle as pickle
 import ipdb
 import numpy as np
 import tensorflow as tf
-tf.logging.set_verbosity(tf.logging.ERROR)
+#tf.logging.set_verbosity(tf.logging.ERROR)
 from deep_dialog.dialog_system import DialogManager, text_to_dict
 from deep_dialog.agents import AgentCmd, InformAgent, RequestAllAgent, \
         RandomAgent, EchoAgent, RequestBasicsAgent, \
@@ -46,7 +46,9 @@ from deep_dialog.dialog_config import *
 from deep_dialog.nlu import nlu
 from deep_dialog.nlg import nlg
 import keras
-
+import keras.backend as K
+sess = tf.Session()
+K.set_session(sess)
 
 
 
