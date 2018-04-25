@@ -13,7 +13,7 @@ class DialogManager:
     """ A dialog manager to mediate the interaction between an agent and a customer """
     
     def __init__(self, agent, user, act_set, slot_set, movie_dictionary, 
-            is_dqn=False):
+            is_a2c=False):
         self.agent = agent
         self.user = user
         self.act_set = act_set
@@ -22,7 +22,7 @@ class DialogManager:
         self.user_action = None
         self.reward = 0
         self.episode_over = False
-        self.is_dqn = is_dqn
+        self.is_a2c = is_a2c
 
     def initialize_episode(self):
         """ Refresh state for new dialog """
@@ -46,7 +46,7 @@ class DialogManager:
         ########################################################################
 
         self.state = self.state_tracker.get_state_for_agent() ## this code is tracking the dialogue state
-        self.agent_action, actions = self.agent.state_to_action(self.state)
+        self.agent_action, idx, actions = self.agent.state_to_action(self.state)
         
         ########################################################################
         #   Register AGENT action with the state_tracker
@@ -74,10 +74,10 @@ class DialogManager:
         #  Inform agent of the outcome for this timestep (s_t, a_t, r, s_{t+1}, episode_over)
         ########################################################################
         # No Experience Replay in A2C # TODO: Fix for A2C
-        if self.is_dqn and record_training_data:
+        if self.is_a2c==False and record_training_data:
             self.agent.register_experience_replay_tuple(self.state, self.agent_action, self.reward, self.state_tracker.get_state_for_agent(), self.episode_over)
         
-        return (self.episode_over, self.reward), actions
+        return (self.episode_over, self.reward), idx, actions
 
     
     def reward_function(self, dialog_status):

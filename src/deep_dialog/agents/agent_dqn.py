@@ -178,6 +178,7 @@ class AgentDQN(Agent):
                     self.warm_start = 2
                 return self.rule_policy()
             else:
+                ipdb.set_trace()
                 return self.dqn.predict(representation, {}, predict_model=True)
                 # return self.dqn(representation)
 

@@ -84,16 +84,17 @@ class AgentDQNKeras(Agent):
 
 	def build_qnetwork_model(self):
 		model = Sequential()
-		fc1 = Dense(self.hidden_size, input_shape=(self.state_dimension,), activation='relu',
-					kernel_initializer=VarianceScaling(mode='fan_avg', distribution='normal'),
-					kernel_regularizer=regularizers.l2(self.reg_cost))
+		fc1 = Dense(self.hidden_size, 
+                        input_shape=(self.state_dimension,), 
+                        activation='relu',
+			kernel_initializer=VarianceScaling(mode='fan_avg', distribution='normal'),
+		        kernel_regularizer=regularizers.l2(self.reg_cost))
 		fc2 = Dense(self.hidden_size, activation='relu',
-					kernel_initializer=VarianceScaling(mode='fan_avg', distribution='normal'),
-					kernel_regularizer=regularizers.l2(self.reg_cost))
-
+			kernel_initializer=VarianceScaling(mode='fan_avg', distribution='normal'),
+			kernel_regularizer=regularizers.l2(self.reg_cost))
 		fc3 = Dense(self.num_actions, activation='linear',
-					kernel_initializer=VarianceScaling(mode='fan_avg', distribution='normal'),
-					kernel_regularizer=regularizers.l2(self.reg_cost))
+			kernel_initializer=VarianceScaling(mode='fan_avg', distribution='normal'),
+			kernel_regularizer=regularizers.l2(self.reg_cost))
 		model.add(fc1)
 		model.add(fc2)
 		model.add(fc3)

@@ -117,7 +117,7 @@ if __name__ == "__main__":
     parser.add_argument('--gan_critic_lr', dest='gan_critic_lr', default=0.001, type=float, help='adverserial critic learning rate')
     parser.add_argument('--discriminator_lr', dest='discriminator_lr', default=0.0005)
     parser.add_argument('--n', dest='n', default=50, type=int, help='critics N')
-    parser.add_argument("--is_dqn", dest='is_dqn', default=True, action="store_false", help='Train DQN or A2C')
+    parser.add_argument("--is_a2c", dest='is_a2c', default=False, action="store_true", help='Train DQN or A2C')
 
     args = parser.parse_args()
     params = vars(args)
@@ -205,7 +205,7 @@ elif agt == 11:
 elif agt == 12:
     agent = AgentBBQN(movie_kb, act_set, slot_set, agent_params)
    
-if params['is_dqn']==False:
+if params['is_a2c']:
     print("Training for A2C Now...")
     if agt == 13:
         agent = AgentA2C(movie_kb, act_set, slot_set, agent_params)
@@ -270,7 +270,7 @@ user_sim.set_nlu_model(nlu_model)
 # Dialog Manager
 ################################################################################
 dialog_manager = DialogManager(agent, user_sim, act_set, slot_set, movie_kb, 
-        params['is_dqn'])
+        params['is_a2c'])
     
     
 ################################################################################
@@ -301,7 +301,7 @@ performance_records['ave_reward'] = {}
 
 
 """ Save model """
-def save_model(path, agt, success_rate, model_agent, best_epoch, cur_epoch, is_dqn=False):
+def save_model(path, agt, success_rate, model_agent, best_epoch, cur_epoch, is_a2c=False):
     filename = 'agt_%s_%s_%s_%.5f.h5' % (agt, best_epoch, cur_epoch, success_rate)
     filepath = os.path.join(path, filename)
     checkpoint = {}
@@ -313,7 +313,7 @@ def save_model(path, agt, success_rate, model_agent, best_epoch, cur_epoch, is_d
             model_agent.dqn.save(filepath)
         except:
             ipdb.set_trace()
-    if agt==13 and is_dqn==False:
+    if agt==13 and is_a2c:
         checkpoint['actor_model'] = model_agent.actor_model
         checkpoint['critic_model'] = model_agent.critic_model
     ## TODO: Add support for adeversarial dqn
@@ -359,12 +359,14 @@ def simulation_epoch(simulation_epoch_size):
     states = []
     actions = []
     rewards = []
+    indexes = []
     for episode in xrange(simulation_epoch_size):
         dialog_manager.initialize_episode()
         episode_over = False
         episode_reward = 0
+        #ipdb.set_trace()
         while(not episode_over):
-            temp, act = dialog_manager.next_turn()
+            temp, idx, act = dialog_manager.next_turn()
             episode_over = temp[0]
             reward = temp[1]
             cumulative_reward += reward
@@ -380,13 +382,14 @@ def simulation_epoch(simulation_epoch_size):
             states.append(dialog_manager.state)
             rewards.append(reward)
             actions.append(act)
+            indexes.append(idx)
     res['success_rate'] = float(successes)/simulation_epoch_size
     res['ave_reward'] = float(cumulative_reward)/simulation_epoch_size
     res['ave_turns'] = float(cumulative_turns)/simulation_epoch_size
     res['std_reward'] = np.std(cumulative_reward_list)
     res['std_turns'] = np.std(cumulative_turn_list)
     print ("simulation success rate %s, ave reward %s, ave turns %s" % (res['success_rate'], res['ave_reward'], res['ave_turns']))
-    return res, states, rewards, actions
+    return res, states, rewards, indexes, actions
 
 """ Warm_Start Simulation (by Rule Policy) """
 def warm_start_simulation():
@@ -403,7 +406,7 @@ def warm_start_simulation():
         episode_over = False
         episode_reward = 0
         while(not episode_over):
-            (episode_over, reward),_ = dialog_manager.next_turn()
+            (episode_over, reward), _, _ = dialog_manager.next_turn()
             cumulative_reward += reward
             episode_reward += reward
             if episode_over:
@@ -447,7 +450,7 @@ def run_episodes(count, status):
         episode_over = False
         
         while(not episode_over):
-            temp, act = dialog_manager.next_turn()
+            temp, idx, act = dialog_manager.next_turn()
             episode_over = temp[0]
             reward = temp[1]
             cumulative_reward += reward
@@ -463,7 +466,7 @@ def run_episodes(count, status):
         # simulation for DQN
         if agt == 9 or agt == 10 or agt == 11 or agt == 12 and params['trained_model_path'] == None:
             agent.predict_mode = True
-            simulation_res, _, _, _ = simulation_epoch(simulation_epoch_size)
+            simulation_res, _, _, _, _ = simulation_epoch(simulation_epoch_size)
             
             performance_records['success_rate'][episode] = simulation_res['success_rate']
             performance_records['ave_turns'][episode] = simulation_res['ave_turns']
@@ -492,9 +495,9 @@ def run_episodes(count, status):
                 save_performance_records(params['write_model_dir'], agt, performance_records)
         
         # simulation for A2C
-        if params['is_dqn']==False and (agt==13 or agt == 14) and params['trained_model_path'] == None:
+        if params['is_a2c'] and (agt==13 or agt == 14) and params['trained_model_path'] == None:
             agent.predict_mode = True
-            simulation_res, states, rewards, actions =  simulation_epoch(simulation_epoch_size)
+            simulation_res, states, rewards, indexes, actions =  simulation_epoch(simulation_epoch_size)
             
             performance_records['success_rate'][episode] = simulation_res['success_rate']
             performance_records['ave_turns'][episode] = simulation_res['ave_turns']
@@ -513,7 +516,7 @@ def run_episodes(count, status):
                 best_res['epoch'] = episode
                 
             #agent.clone_dqn = copy.deepcopy(agent.dqn)
-            agent.train(states, actions, rewards)
+            agent.train(states, actions, rewards, indexes)
             agent.predict_mode = False
             print ("Simulation success rate %s, Ave reward %s, Ave turns %s, Best success rate %s" % (performance_records['success_rate'][episode], performance_records['ave_reward'][episode], performance_records['ave_turns'][episode], best_res['success_rate']))
             if episode % save_check_point == 0 and params['trained_model_path'] == None: # save the model every 10 episodes
@@ -530,12 +533,12 @@ def run_episodes(count, status):
         save_model(params['write_model_dir'], agt, float(successes)/count, best_model['model'], best_res['epoch'], count)
         save_performance_records(params['write_model_dir'], agt, performance_records)
 
-def test_episodes(num_runs, status, is_dqn):
+def test_episodes(num_runs, status, is_a2c):
     ## load saved best model
     ## agent best, params
     checkpoint = load_model(params["final_checkpoint_path"])
     ## TODO: Unsure if this copying trick works for keras implementation
-    if is_dqn:
+    if is_a2c==False:
         agent.dqn = copy.deepcopy(checkpoint["model"])
     else:
         agent.actor_model = copy.deepcopy(checkpoint['actor_model'])
@@ -556,4 +559,4 @@ def test_episodes(num_runs, status, is_dqn):
 if not params['test_mode']:
     run_episodes(num_episodes, status)
 else:
-    test_episodes(1, status, params['is_dqn'])
+    test_episodes(1, status, params['is_a2c'])

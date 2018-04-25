@@ -145,16 +145,16 @@ class AgentAdverserialA2C(Agent):
 
 	def build_actor_model(self, actor_lr):
 		model = Sequential()
-		fc1 = Dense(50, input_shape=(self.state_dimension,), activation='relu',
-					kernel_initializer=VarianceScaling(mode='fan_avg',
-													   distribution='normal'))
+		fc1 = Dense(50, input_shape=(self.state_dimension,), 
+			activation='relu',
+			kernel_initializer=VarianceScaling(mode='fan_avg',
+			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
 		fc2 = Dense(50, activation='relu',
-					kernel_initializer=VarianceScaling(mode='fan_avg',
-													   distribution='normal'))
-
-		fc3 = Dense(self.num_actions, activation='linear',
-					kernel_initializer=VarianceScaling(mode='fan_avg',
-													   distribution='normal'))
+			kernel_initializer=VarianceScaling(mode='fan_avg',
+			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
+		fc3 = Dense(self.num_actions, activation='softmax',
+			kernel_initializer=VarianceScaling(mode='fan_avg',
+			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
 		model.add(fc1)
 		model.add(fc2)
 		model.add(fc3)
@@ -164,15 +164,14 @@ class AgentAdverserialA2C(Agent):
 	def build_critic_model(self, critic_lr, is_adverserial = False):
 		model = Sequential()
 		fc1 = Dense(50, input_shape=(self.state_dimension,), activation='relu',
-					kernel_initializer=VarianceScaling(mode='fan_avg',
-													   distribution='normal'))
+			kernel_initializer=VarianceScaling(mode='fan_avg',
+			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
 		fc2 = Dense(50, activation='relu',
-					kernel_initializer=VarianceScaling(mode='fan_avg',
-													   distribution='normal'))
+			kernel_initializer=VarianceScaling(mode='fan_avg',
+			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
 		fc3 = Dense(1, activation='relu',
-					kernel_initializer=VarianceScaling(mode='fan_avg',
-													   distribution='normal'))
-		model.add(fc1)
+			kernel_initializer=VarianceScaling(mode='fan_avg',
+			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
 		model.add(fc2)
 		model.add(fc3)
 		model.compile(loss='mse', optimizer=Adam(lr=self.critic_lr))
@@ -306,9 +305,11 @@ class AgentAdverserialA2C(Agent):
 				self.representation.reshape(1, batch_size))
 		except:
 			ipdb.set_trace()
+                self.action = self.action.squeeze(0)
 		act_slot_response = copy.deepcopy(
-			self.feasible_actions[np.argmax(self.action[0])])
-		return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}, self.action[0]
+                self.feasible_actions[np.random.choice(self.num_actions, 1,
+                    p=self.action)[0]])
+                return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}, self.action[0]
 
 	def rule_policy(self):
 		""" Rule Policy """
@@ -397,7 +398,7 @@ class AgentAdverserialA2C(Agent):
 		## TODO: Initialize expert policy as the policy that takes epsilon greedy actions in DQN trained agent
 		return
 
-	def train(self, states, actions, rewards, gamma=0.99):
+	def train(self, states, actions, rewards, indexes, gamma=0.99):
 		states = [self.prepare_state_representation(x) for x in states]
 		advantage, gains = self.get_advantage(states, rewards)
 
@@ -406,7 +407,10 @@ class AgentAdverserialA2C(Agent):
 		actions = np.asarray(actions)
 
 		# L(\theta) from the handout
-		targets = advantage * actions
+		act_target = np.zeros((len(states),self.num_actions))
+                act_target[np.arange(len(states)), np.array(actions)] \
+                        = (np.array(discounted_rewards) - np.array(values))
+                targets = advantage * actions
 		states = np.asarray(states)
 		rewards = np.asarray(rewards)
 		tot_rewards = np.sum(rewards)

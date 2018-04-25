@@ -16,6 +16,7 @@ from keras.initializers import VarianceScaling
 from keras.models import Sequential,Model
 from keras.layers import Dense,Input,Lambda
 from keras.optimizers import Adam
+from keras import regularizers
 import ipdb
 from constants import *
 import random
@@ -109,14 +110,13 @@ class AgentA2C(Agent):
         model = Sequential()
         fc1 = Dense(50, input_shape=(self.state_dimension,),activation='relu',
                 kernel_initializer=VarianceScaling(mode='fan_avg',
-                    distribution='normal'))
+                distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
         fc2 = Dense(50, activation='relu',
                 kernel_initializer=VarianceScaling(mode='fan_avg',
-                    distribution='normal'))
-
-        fc3 = Dense(self.num_actions, activation='linear',
+                distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
+        fc3 = Dense(self.num_actions, activation='softmax',
                 kernel_initializer=VarianceScaling(mode='fan_avg',
-                    distribution='normal'))
+                distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
         model.add(fc1)
         model.add(fc2)
         model.add(fc3)
@@ -128,13 +128,13 @@ class AgentA2C(Agent):
         model = Sequential()
         fc1 = Dense(50, input_shape=(self.state_dimension,),activation='relu',
                 kernel_initializer=VarianceScaling(mode='fan_avg',
-                    distribution='normal'))
+                distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
         fc2 = Dense(50, activation='relu',
                 kernel_initializer=VarianceScaling(mode='fan_avg',
-                    distribution='normal'))
+                distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
         fc3 = Dense(1, activation='relu',
                 kernel_initializer=VarianceScaling(mode='fan_avg',
-                    distribution='normal'))
+                distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
         model.add(fc1)
         model.add(fc2)
         model.add(fc3)
@@ -243,21 +243,21 @@ class AgentA2C(Agent):
         self.representation = self.prepare_state_representation(state)
         batch_size = self.representation.shape[0]
         #self.action = self.run_policy(self.representation)
-        try:
-            self.action = self.actor_model.predict_on_batch(
-                    self.representation.reshape(1, batch_size))
-        except:
-            ipdb.set_trace()
+        self.action = self.actor_model.predict_on_batch(
+                self.representation.reshape(1, batch_size))
+        self.action = self.action.squeeze(0)
+        #ipdb.set_trace()
+        idx = np.random.choice(self.num_actions, 1, p=self.action)[0]
         act_slot_response = copy.deepcopy(
-                self.feasible_actions[np.argmax(self.action[0])])
-        return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}, self.action[0]
+                self.feasible_actions[idx])
+        return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}, idx, self.action[0]
 
     def rule_policy(self):
         """ Rule Policy """
 
         if self.current_slot_id < len(self.request_set):
                 slot = self.request_set[self.current_slot_id]
-                self.current_slot_id += 1
+                self.curent_slot_id += 1
 
                 act_slot_response = {}
                 act_slot_response['diaact'] = "request"
@@ -326,24 +326,25 @@ class AgentA2C(Agent):
                         for k in range(self.n)])
             advantage[t] = gain[t] - self.critic_model.predict(np.asarray(
                 [states[t]]))[0]
-        return advantage
+        return advantage, gain
   
-    def train(self, states, actions, rewards, gamma=0.99):
+    def train(self, states, actions, rewards, indexes, gamma=0.99):
         states = [self.prepare_state_representation(x) for x in states]
-        advantage = self.get_advantage(states, rewards)
-
-        #ipdb.set_trace()
+        advantage, gains = self.get_advantage(states, rewards)
         advantage = advantage.reshape(-1,1)
         actions = np.asarray(actions)
 
         # L(\theta) from the handout
-        targets = advantage*actions
+        targets = advantage #* actions
+        act_target = np.zeros((len(states),self.num_actions))
+        act_target[np.arange(len(states)), np.array(indexes)] \
+                        = targets.squeeze(1)
         states = np.asarray(states)
         rewards = np.asarray(rewards)
         tot_rewards = np.sum(rewards)
-
-        self.actor_model.train_on_batch(states, targets)
-        self.critic_model.train_on_batch(states, rewards)
+     
+        self.actor_model.train_on_batch(states, act_target)
+        self.critic_model.train_on_batch(states, gains)
         return tot_rewards
 
     def evaluate(self,env,episode,num_episodes=100,render=False):

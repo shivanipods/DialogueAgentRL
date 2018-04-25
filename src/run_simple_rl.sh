@@ -5,7 +5,7 @@ CUDA_VISIBLE_DEVICES=0 python run.py --agt 10 --usr 1 --max_turn 40 \
 	      --experience_replay_pool_size 1000 \
 	      --episodes 500 \
 	      --simulation_epoch_size 100 \
-	      --write_model_dir ./deep_dialog/checkpoints/dqn_keras/ \
+	      --write_model_dir ./deep_dialog/checkpoints/dqn_keras_2/ \
 	      --run_mode 10 \
 	      --act_level 0 \
 	      --slot_err_prob 0.00 \
@@ -15,5 +15,6 @@ CUDA_VISIBLE_DEVICES=0 python run.py --agt 10 --usr 1 --max_turn 40 \
 	      --warm_start 1 \
 	      --warm_start_epochs 120 \
           --cmd_input_mode 0 \
-
+          --save_check_point 20 \
+          --lrate 0.005
 
