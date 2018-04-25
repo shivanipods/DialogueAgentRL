@@ -28,7 +28,7 @@ RL: python run.py --agt 9 --usr 1 --max_turn 40 --movie_kb_path .\deep_dialog\da
 
 
 import argparse, json, copy, os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import cPickle as pickle
 import ipdb
 import numpy as np
@@ -299,21 +299,21 @@ performance_records['ave_reward'] = {}
 
 
 """ Save model """
-def save_model(path, agt, success_rate, agent, best_epoch, cur_epoch, is_dqn=False):
+def save_model(path, agt, success_rate, model_agent, best_epoch, cur_epoch, is_dqn=False):
     filename = 'agt_%s_%s_%s_%.5f.h5' % (agt, best_epoch, cur_epoch, success_rate)
     filepath = os.path.join(path, filename)
     checkpoint = {}
     #ipdb.set_trace()
     if agt == 9: checkpoint['model'] = copy.deepcopy(agent.dqn.model)
     if agt == 10 or agt == 11 or agt == 12:
-        checkpoint['model'] = agent.dqn
+        checkpoint['model'] = model_agent.dqn
         try:
-            agent.dqn.save(filepath)
+            model_agent.dqn.save(filepath)
         except:
             ipdb.set_trace()
     if agt==13 and is_dqn==False:
-        checkpoint['actor_model'] = agent.actor_model
-        checkpoint['critic_model'] = agent.critic_model
+        checkpoint['actor_model'] = model_agent.actor_model
+        checkpoint['critic_model'] = model_agent.critic_model
     ## TODO: Add support for adeversarial dqn
     checkpoint['params'] = params
     try:
