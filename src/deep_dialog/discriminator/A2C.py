@@ -13,6 +13,7 @@ from keras.models import Sequential,load_model, Model
 from keras.layers import Dense, Dropout, Flatten, Multiply, Activation
 from keras.layers import Conv2D, MaxPooling2D, Input, Lambda
 from keras.optimizers import Adam, Adamax, RMSprop
+from keras.initializers import VarianceScaling
 from keras import backend as K
 import gym
 from gym import wrappers
@@ -36,31 +37,19 @@ class A2C():
 			self.expert = keras.models.model_from_json(f.read())
 		self.expert.load_weights(self.args.expert_weights_path)
 
-		kernel = keras.initializers.VarianceScaling(scale=1.0, mode='fan_avg',
-													distribution='uniform', seed=None)
-
-		## create the discriminator
-		self.discriminator = Sequential([
-			Dense(20, input_shape=(self.nS + self.nA,), kernel_initializer=kernel),
-			Activation('relu'),
-			Dense(20, kernel_initializer=kernel),
-			Activation('relu'),
-			Dense(1, activation='sigmoid', kernel_initializer=kernel),
-		])
-
 		## create the actor
 		with open(self.args.model_config_path, 'r') as f:
 			self.actor = keras.models.model_from_json(f.read())
 
 		## create the original critic
 		'''
-                with open(self.args.model_config_path, 'r') as f:
+		with open(self.args.model_config_path, 'r') as f:
 			self.critic = keras.models.model_from_json(f.read())
 		self.critic.pop()
 		self.critic.add(Dense(1, activation='linear', kernel_initializer=kernel))
-                '''
+		'''
 
-	        model = Sequential()
+		model = Sequential()
 		fc1 = Dense(50, input_shape=(self.nS,),activation='relu',
 			kernel_initializer=VarianceScaling(mode='fan_avg',
 			    distribution='normal'))
@@ -73,14 +62,7 @@ class A2C():
 		model.add(fc1)
 		model.add(fc2)
 		model.add(fc3)
-		#model.compile(loss='mse',optimizer=Adam(lr=critic_lr))
-		self.critic = model 	
-                ## create the gan critic
-		with open(self.args.model_config_path, 'r') as f:
-			self.gan_critic = keras.models.model_from_json(f.read())
-		self.gan_critic.pop()
-		self.gan_critic.add(Dense(1, activation='linear', kernel_initializer=kernel))
-
+		self.critic = model
 
 		self.n = args.n
 		self.gamma = args.gamma
@@ -156,14 +138,9 @@ class A2C():
 		if self.args.optimizer == "adam":
 			self.actor_optimizer = Adam(lr=self.args.actor_lr)
 			self.critic_optimizer = Adam(lr=self.args.critic_lr)
-			self.gan_critic_optimizer = Adam(lr=self.args.critic_lr)
-			self.discriminator_optimizer = Adam(lr = self.args.discriminator_lr)
 
 		self.actor.compile(optimizer=self.actor_optimizer, loss='categorical_crossentropy')
 		self.critic.compile(optimizer=self.critic_optimizer, loss='mse')
-		self.gan_critic.compile(optimizer=self.gan_critic_optimizer, loss='mse')
-		self.discriminator.compile(optimizer=self.critic_optimizer, loss='binary_crossentropy', metrics=['accuracy'])
-
 		## populate training data for the discriminator
 		# self.run_expert()
 

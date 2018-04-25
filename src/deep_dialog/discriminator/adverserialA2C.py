@@ -11,8 +11,10 @@ from keras.callbacks import TensorBoard
 import tensorflow as tf
 from keras.models import Sequential,load_model, Model
 from keras.layers import Dense, Dropout, Flatten, Multiply, Activation
+from keras.layers.advanced_activations import LeakyReLU, PReLU
 from keras.layers import Conv2D, MaxPooling2D, Input, Lambda
 from keras.optimizers import Adam, Adamax, RMSprop
+from keras.initializers import VarianceScaling
 from keras import backend as K
 import gym
 from gym import wrappers
@@ -40,33 +42,67 @@ class AdverserialA2C():
 													distribution='uniform', seed=None)
 
 		## create the discriminator
-		self.discriminator = Sequential([
-			Dense(20, input_shape=(self.nS + self.nA,), kernel_initializer=kernel),
-			Activation('relu'),
-			Dense(20, kernel_initializer=kernel),
-			Activation('relu'),
-			Dense(1, activation='sigmoid', kernel_initializer=kernel),
-		])
+		self.discriminator = self.build_discriminator()
 
 		## create the actor
 		with open(self.args.model_config_path, 'r') as f:
 			self.actor = keras.models.model_from_json(f.read())
 
+		self.actor = self.build_actor()
+
 		## create the original critic
-		with open(self.args.model_config_path, 'r') as f:
-			self.critic = keras.models.model_from_json(f.read())
-		self.critic.pop()
-		self.critic.add(Dense(1, activation='linear', kernel_initializer=kernel))
+		self.critic = self.build_critic()
 
 		## create the gan critic
-		with open(self.args.model_config_path, 'r') as f:
-			self.gan_critic = keras.models.model_from_json(f.read())
-		self.gan_critic.pop()
-		self.gan_critic.add(Dense(1, activation='linear', kernel_initializer=kernel))
+		self.gan_critic = self.build_critic()
 
 
 		self.n = args.n
 		self.gamma = args.gamma
+
+	def build_discriminator(self):
+		kernel = keras.initializers.VarianceScaling(scale=1.0, mode='fan_avg',
+													distribution='normal', seed=None)
+		model= Sequential([
+			Dense(50, input_shape=(self.nS + self.nA,), kernel_initializer=kernel),
+			# Activation('relu'),
+			## Leaky Activation to prevent sparse gradients
+			LeakyReLU(alpha=.001),
+			Dense(50, kernel_initializer=kernel),
+			# Activation('relu'),
+			LeakyReLU(alpha=.001),
+			Dense(1, activation='sigmoid', kernel_initializer=kernel),
+		])
+		return model
+
+
+	def build_actor(self):
+		kernel = VarianceScaling(mode='fan_avg',distribution='normal')
+		model = Sequential([
+		Dense(16, input_shape=(self.nS,), kernel_initializer=kernel),
+		LeakyReLU(alpha=.001),
+		Dropout(0.2, input_shape=(16,)),
+		Dense(16, kernel_initializer=kernel),
+		LeakyReLU(alpha=.001),
+		Dropout(0.2, input_shape=(16,)),
+		Dense(16, kernel_initializer=kernel),
+		LeakyReLU(alpha=.001),
+		Dropout(0.2, input_shape=(16,)),
+		Dense(self.nA, kernel_initializer=kernel, activation='softmax')]
+		)
+
+		return model
+
+	def build_critic(self):
+		kernel = VarianceScaling(mode='fan_avg', distribution='normal')
+		## not that the critic is not the generator and discriminator, hence we dont apply dropout and leaky nonlinear units
+		model = Sequential([
+			Dense(50, input_shape=(self.nS,), activation='relu', kernel_initializer=kernel),
+			Dropout(0.2, input_shape=(50,)),
+			Dense(50, activation='relu',kernel_initializer=kernel),
+			Dropout(0.2, input_shape=(50,)),
+			Dense(1, kernel_initializer=kernel, activation='relu')])
+		return model
 
 	def truncated_discounted_rewards(self, rewards):
 
@@ -132,8 +168,6 @@ class AdverserialA2C():
 			values.append(criticval.squeeze(0)[0])
 		return values
 
-	def compute_discriminator_reward(self, states, actions):
-		return
 
 	def train(self):
 		if self.args.optimizer == "adam":
@@ -177,24 +211,37 @@ class AdverserialA2C():
 			## sample from an expert episode and the current simulated episode
 			## in Goodfellow's original paper, he does it k times
 			expert_states, expert_actions, _ = AdverserialA2C.generate_expert_episode(self.expert, self.env)
-			sampled_expert_index = np.random.randint(0, len(expert_states))
-			one_hot_expert_action = np.zeros((1, self.nA))
-			one_hot_expert_action[:,expert_actions[sampled_expert_index]] = 1
-			sampled_expert_state = np.array(expert_states[sampled_expert_index])
-			sampled_expert_state = np.expand_dims(sampled_expert_state, 0)
-			sampled_expert_example = np.concatenate((sampled_expert_state, one_hot_expert_action), axis=1)
-			sampled_simulated_index = np.random.randint(0, len(states))
-			one_hot_simulated_action = np.zeros((1,self.nA))
-			one_hot_simulated_action[:,actions[sampled_simulated_index]] = 1
-			sampled_simulated_state = states[sampled_simulated_index]
-			sampled_simulated_state = np.expand_dims(sampled_simulated_state,0)
-			sampled_simulated_example = np.concatenate((sampled_simulated_state, one_hot_simulated_action), axis=1)
 
+			expert_set = []
+			simulation_set = []
+			for k in range(self.args.discriminator_batch_size):
+				sampled_expert_index = np.random.randint(0, len(expert_states))
+				one_hot_expert_action = np.zeros(self.nA)
+				one_hot_expert_action[expert_actions[sampled_expert_index]] = 1
+				sampled_expert_state = np.array(expert_states[sampled_expert_index])
+				# sampled_expert_state = np.expand_dims(sampled_expert_state, 0)
+				sampled_expert_example = np.concatenate((sampled_expert_state, one_hot_expert_action), axis=0)
+				expert_set.append(sampled_expert_example)
+				sampled_simulated_index = np.random.randint(0, len(states))
+				one_hot_simulated_action = np.zeros(self.nA)
+				one_hot_simulated_action[actions[sampled_simulated_index]] = 1
+				sampled_simulated_state = states[sampled_simulated_index]
+				# sampled_simulated_state = np.expand_dims(sampled_simulated_state,0)
+				sampled_simulated_example = np.concatenate((sampled_simulated_state, one_hot_simulated_action), axis=0)
+				simulation_set.append(sampled_simulated_example)
 
-			## train discriminator
-			d_loss_real = self.discriminator.train_on_batch(sampled_expert_example, np.ones((self.args.discriminator_batch_size, 1)))
-			d_loss_fake = self.discriminator.train_on_batch(sampled_simulated_example, np.zeros((self.args.discriminator_batch_size, 1)))
-			d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
+			expert_set = np.asarray(expert_set)
+			simulation_set = np.asarray(simulation_set)
+			## combined training data
+			expert_labels = np.ones((self.args.discriminator_batch_size, 1))
+			simulated_labels = np.zeros((self.args.discriminator_batch_size, 1))
+
+			## train discriminator with minibatches of positive and negative examples
+			d_loss_expert, _ = self.discriminator.train_on_batch(expert_set, expert_labels)
+			d_loss_simulated, _ = self.discriminator.train_on_batch(expert_set, expert_labels)
+			d_loss = 0.5*(d_loss_expert + d_loss_simulated)
+
+			print("Discriminator Loss:{0}".format(d_loss))
 
 			## compute gan rewards
 			## call predict on a batch of the current simulated  episodes to get the class value
@@ -205,7 +252,16 @@ class AdverserialA2C():
 				concat_s_a = np.concatenate((s, one_hot))
 				state_action_pairs.append(concat_s_a)
 			probability_simulation = self.discriminator.predict(np.array(state_action_pairs))
-			gan_rewards = (-np.log(1-probability_simulation)).flatten().tolist()
+
+			'''
+			gan reward -log(1-D)
+			'''
+			# gan_rewards = (-np.log(1-probability_simulation)).flatten().tolist()
+			'''
+			gan reward log(D)
+			'''
+			gan_rewards = np.log(probability_simulation).flatten().tolist()
+
 
 			''' Train gan actor-critic network '''
 			gan_values = self.compute_baseline(states, isgan=True)
@@ -214,12 +270,20 @@ class AdverserialA2C():
 			gan_act_target[np.arange(len(states)), np.array(actions)] = (np.array(gan_discounted_rewards)
 																	 - np.array(gan_values))
 			gan_critic_target = np.array(gan_discounted_rewards)
-			gan_actor_loss = self.actor.train_on_batch(states, gan_act_target)
-			gan_critic_loss = self.gan_critic.train_on_batch(states, gan_critic_target)
 
+			'''
+			Actor-critic associated with the discriminator are trained every alternate episode as opposed to 
+			Original actor-critic trained every episode
+			'''
+			gan_actor_loss = 0.0
+			gan_critic_loss = 0.0
+			if episode%2 == 0:
+				gan_actor_loss = self.actor.train_on_batch(states, gan_act_target)
+				gan_critic_loss = self.gan_critic.train_on_batch(states, gan_critic_target)
 
 			total_act_loss.append(actor_loss + gan_actor_loss)
 			total_crit_loss.append(critic_loss + gan_critic_loss)
+
 			all_rewards.append(np.sum(rewards) * 1e2)
 			adverserial_rewards.append(np.sum(gan_rewards))
 
@@ -358,7 +422,7 @@ def parse_arguments():
 	parser.add_argument('--actor_lr', dest='actor_lr', type=float, default=5e-4)
 	parser.add_argument('--discriminator_lr', dest='discriminator_lr', type=float, default=5e-4)
 	parser.add_argument('--num-expert-episodes', dest='num_expert_episodes', type=int, default=50)
-	parser.add_argument('--discriminator-batch-size', dest='discriminator_batch_size', default=1)
+	parser.add_argument('--discriminator-batch-size', dest='discriminator_batch_size', default=10)
 
 	args = parser.parse_args()
 

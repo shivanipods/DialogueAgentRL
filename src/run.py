@@ -120,8 +120,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     params = vars(args)
 
-    print 'Dialog Parameters: '
-    print json.dumps(params, indent=2)
+    print('Dialog Parameters: ')
+    print(json.dumps(params, indent=2))
 
 
 max_turn = params['max_turn']
@@ -204,7 +204,7 @@ elif agt == 12:
     agent = AgentBBQN(movie_kb, act_set, slot_set, agent_params)
    
 if params['is_dqn']==False:
-    print "Training for A2C Now..."
+    print("Training for A2C Now...")
     if agt == 13:
         agent = AgentA2C(movie_kb, act_set, slot_set, agent_params)
     elif agt == 14:
@@ -304,7 +304,7 @@ def save_model(path, agt, success_rate, model_agent, best_epoch, cur_epoch, is_d
     filepath = os.path.join(path, filename)
     checkpoint = {}
     #ipdb.set_trace()
-    if agt == 9: checkpoint['model'] = copy.deepcopy(agent.dqn.model)
+    if agt == 9: checkpoint['model'] = copy.deepcopy(model_agent.dqn.model)
     if agt == 10 or agt == 11 or agt == 12:
         checkpoint['model'] = model_agent.dqn
         try:
@@ -318,19 +318,19 @@ def save_model(path, agt, success_rate, model_agent, best_epoch, cur_epoch, is_d
     checkpoint['params'] = params
     try:
         pickle.dump(checkpoint, open(filepath, "wb"))
-        print 'saved model in %s' % (filepath, )
+        print('saved model in %s' % (filepath, ))
     except Exception, e:
-        print 'Error: Writing model fails: %s' % (filepath, )
-        print e
+        print('Error: Writing model fails: %s' % (filepath, ))
+        print(e)
 
 def load_model(path):
     try:
         checkpoint = pickle.load(open(path, "rb"))
-        print 'loaded the checkpoint %s' % (path,)
+        print('loaded the checkpoint %s' % (path,))
         return checkpoint
     except Exception, e:
-        print "Error: Reading model fails: %s" % (path,)
-        print e
+        print("Error: Reading model fails: %s" % (path,))
+        print(e)
         return None
 
 
@@ -341,10 +341,10 @@ def save_performance_records(path, agt, records):
     filepath = os.path.join(path, filename)
     try:
         json.dump(records, open(filepath, "wb"))
-        print 'saved model in %s' % (filepath, )
+        print('saved model in %s' % (filepath, ))
     except Exception, e:
-        print 'Error: Writing model fails: %s' % (filepath, )
-        print e
+        print('Error: Writing model fails: %s' % (filepath, ))
+        print(e)
 
 """ Run N simulation Dialogues """
 def simulation_epoch(simulation_epoch_size):
