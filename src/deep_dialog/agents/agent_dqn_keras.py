@@ -221,7 +221,7 @@ class AgentDQNKeras(Agent):
 		self.representation = self.prepare_state_representation(state)
 		self.action = self.run_policy(self.representation)
 		act_slot_response = copy.deepcopy(self.feasible_actions[self.action])
-		return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}, None
+		return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}, None, None
 
 	def rule_policy(self):
 		""" Rule Policy """

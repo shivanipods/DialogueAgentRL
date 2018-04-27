@@ -62,10 +62,10 @@ class AgentA2C(Agent):
 	#self.experience_replay_pool = [] #Replay_Memory(self.experience_replay_pool_size)
 	self.hidden_size = params.get('dqn_hidden_size', 60)
 	# gamma : discount factor
-	self.gamma = params.get('gamma', 0.99)
+	self.gamma = params.get('gamma', 1)
 	self.predict_mode = params.get('predict_mode', False)
 	self.actor_lr = params.get('actor_lr', 0.0005)
-	self.critic_lr = params.get('critic_lr', 0.0005)
+	self.critic_lr = params.get('critic_lr', 0.001)
         ## warm start:
 	#self.warm_start = params.get('warm_start', 0)
 

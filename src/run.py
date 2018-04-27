@@ -47,6 +47,7 @@ from deep_dialog.nlu import nlu
 from deep_dialog.nlg import nlg
 import keras
 import keras.backend as K
+from keras.models import model_from_json
 sess = tf.Session()
 K.set_session(sess)
 
@@ -302,38 +303,83 @@ performance_records['ave_reward'] = {}
 
 """ Save model """
 def save_model(path, agt, success_rate, model_agent, best_epoch, cur_epoch, is_a2c=False):
-    filename = 'agt_%s_%s_%s_%.5f.h5' % (agt, best_epoch, cur_epoch, success_rate)
+    filename = 'agt_%s_%s_%s_%.5f' % (agt, best_epoch, cur_epoch, success_rate)
     filepath = os.path.join(path, filename)
     checkpoint = {}
     #ipdb.set_trace()
     if agt == 9: checkpoint['model'] = copy.deepcopy(model_agent.dqn.model)
     if agt == 10 or agt == 11 or agt == 12:
-        checkpoint['model'] = model_agent.dqn
         try:
-            model_agent.dqn.save(filepath)
-        except:
-            ipdb.set_trace()
+            # serialize model to JSON
+            model_json = model_agent.to_json()
+            with open(filepath + ".json", "w") as json_file:
+                json_file.write(model_json)
+            # serialize weights to HDF5
+            model_agent.save_weights(filepath + ".h5")
+            print("Saved model to disk")
+        except Exception, e:
+            print('Error: Writing model fails: %s' % (filepath,))
+            print(e)
     if agt==13 and is_a2c:
-        checkpoint['actor_model'] = model_agent.actor_model
-        checkpoint['critic_model'] = model_agent.critic_model
+        try:
+            actor_json = model_agent["actor_model"].to_json()
+            with open(filepath + ".actor.json", "w") as json_file:
+                json_file.write(actor_json)
+            model_agent["actor_model"].save_weights(filepath + ".actor.h5")
+            critic_json = model_agent["critic_model"].to_json()
+            with open(filepath + ".critic.json", "w") as json_file:
+                json_file.write(critic_json)
+            model_agent["critic_model"].save_weights(filepath + ".critic.h5")
+        except:
+            print('Error: Writing model fails: %s' % (filepath,))
+            print(e)
     ## TODO: Add support for adeversarial dqn
     checkpoint['params'] = params
-    try:
-        pickle.dump(checkpoint, open(filepath, "wb"))
-        print('saved model in %s' % (filepath, ))
-    except Exception, e:
-        print('Error: Writing model fails: %s' % (filepath, ))
-        print(e)
+    pickle.dump(checkpoint, open(filepath, "wb"))
 
-def load_model(path):
-    try:
-        checkpoint = pickle.load(open(path, "rb"))
-        print('loaded the checkpoint %s' % (path,))
-        return checkpoint
-    except Exception, e:
-        print("Error: Reading model fails: %s" % (path,))
-        print(e)
-        return None
+
+def load_model(path, is_a2c = False):
+    checkpoint = {}
+    if agt == 10 or agt == 11 or agt == 12:
+        try:
+            json_file = open(path + '.json', 'r')
+            loaded_model_json = json_file.read()
+            json_file.close()
+            loaded_model = model_from_json(loaded_model_json)
+            # load weights into new model
+            loaded_model.load_weights(path + ".h5")
+            print("Loaded model from disk")
+            print('loaded the checkpoint %s' % (path,))
+            checkpoint["model"] = loaded_model
+        except Exception, e:
+            print("Error: Reading model fails: %s" % (path,))
+            print(e)
+            return None
+    if agt == 13 and is_a2c:
+        try:
+            json_file = open(path + '.actor.json', 'r')
+            loaded_model_json = json_file.read()
+            json_file.close()
+            actor_model = model_from_json(loaded_model_json)
+            # load weights into new model
+            actor_model.load_weights(path + ".actor.h5")
+            json_file = open(path + '.critic.json', 'r')
+            loaded_model_json = json_file.read()
+            json_file.close()
+            critic_model = model_from_json(loaded_model_json)
+            # load weights into new model
+            critic_model.load_weights(path + ".critic.h5")
+            checkpoint["actor_model"] = actor_model
+            checkpoint["critic_model"] = critic_model
+            print("Loaded model from disk")
+            print('loaded the checkpoint %s' % (path,))
+            return loaded_model
+        except Exception, e:
+            print("Error: Reading model fails: %s" % (path,))
+            print(e)
+            return None
+    ## TODO No support for adversarial
+    return checkpoint
 
 
 
@@ -488,7 +534,6 @@ def run_episodes(count, status):
             agent.clone_dqn.set_weights(agent.dqn.get_weights())
             agent.train(batch_size, 2)
             agent.predict_mode = False
-            
             print ("Simulation success rate %s, Ave reward %s, Ave turns %s, Best success rate %s" % (performance_records['success_rate'][episode], performance_records['ave_reward'][episode], performance_records['ave_turns'][episode], best_res['success_rate']))
             if episode % save_check_point == 0 and params['trained_model_path'] == None: # save the model every 10 episodes
                 save_model(params['write_model_dir'], agt, best_res['success_rate'], best_model['model'], best_res['epoch'], episode)
@@ -509,7 +554,9 @@ def run_episodes(count, status):
                     simulation_epoch(simulation_epoch_size)
                 
             if simulation_res['success_rate'] > best_res['success_rate']:
-                best_model['model'] = copy.deepcopy(agent)
+                best_model['model'] = {}
+                best_model['model']["actor_model"] = agent.actor_model
+                best_model['model']["critic_model"] = agent.critic_model
                 best_res['success_rate'] = simulation_res['success_rate']
                 best_res['ave_reward'] = simulation_res['ave_reward']
                 best_res['ave_turns'] = simulation_res['ave_turns']
@@ -520,7 +567,7 @@ def run_episodes(count, status):
             agent.predict_mode = False
             print ("Simulation success rate %s, Ave reward %s, Ave turns %s, Best success rate %s" % (performance_records['success_rate'][episode], performance_records['ave_reward'][episode], performance_records['ave_turns'][episode], best_res['success_rate']))
             if episode % save_check_point == 0 and params['trained_model_path'] == None: # save the model every 10 episodes
-                save_model(params['write_model_dir'], agt, best_res['success_rate'], best_model['model'], best_res['epoch'], episode)
+                save_model(params['write_model_dir'], agt, best_res['success_rate'], best_model['model'], best_res['epoch'], episode, params['is_a2c'])
                 save_performance_records(params['write_model_dir'], agt, performance_records)
         
 
@@ -536,13 +583,13 @@ def run_episodes(count, status):
 def test_episodes(num_runs, status, is_a2c):
     ## load saved best model
     ## agent best, params
-    checkpoint = load_model(params["final_checkpoint_path"])
+    checkpoint = load_model(params["final_checkpoint_path"], is_a2c)
     ## TODO: Unsure if this copying trick works for keras implementation
     if is_a2c==False:
-        agent.dqn = copy.deepcopy(checkpoint["model"])
+        agent.dqn = checkpoint["model"]
     else:
-        agent.actor_model = copy.deepcopy(checkpoint['actor_model'])
-        agent.critic_model = copy.deepcopy(checkpoint['critic_model'])
+        agent.actor_model = checkpoint['actor_model']
+        agent.critic_model = checkpoint['critic_model']
     num_episodes = 10000
     average_success_rate = 0
     average_reward = 0
