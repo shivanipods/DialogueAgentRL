@@ -319,7 +319,6 @@ def save_model(path, agt, success_rate, model_agent, best_epoch, cur_epoch, is_a
             print("Saved model to disk")
         except Exception, e:
             print('Error: Writing model fails: %s' % (filepath,))
-            print(e)
     if agt==13 and is_a2c:
         try:
             actor_json = model_agent["actor_model"].to_json()
@@ -332,7 +331,6 @@ def save_model(path, agt, success_rate, model_agent, best_epoch, cur_epoch, is_a
             model_agent["critic_model"].save_weights(filepath + ".critic.h5")
         except:
             print('Error: Writing model fails: %s' % (filepath,))
-            print(e)
     ## TODO: Add support for adeversarial dqn
     checkpoint['params'] = params
     pickle.dump(checkpoint, open(filepath, "wb"))

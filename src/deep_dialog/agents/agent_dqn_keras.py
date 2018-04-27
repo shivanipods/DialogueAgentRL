@@ -57,7 +57,7 @@ class AgentDQNKeras(Agent):
 		# gamma : discount factor
 		self.gamma = params.get('gamma', 0.9)
 		self.predict_mode = params.get('predict_mode', False)
-		self.learning_rate = self.params.get("lrate", 0.0001)
+		self.learning_rate = self.params.get("lrate", 0.005)
 		self.reg_cost = self.params.get('reg_cost', 1e-3)
 		## warm start:
 		self.warm_start = params.get('warm_start', 0)
@@ -282,7 +282,7 @@ class AgentDQNKeras(Agent):
 		# prediction = prediction[np.arange(batch_size), action_batch]
 		next_state_batch = np.asarray(batch.next_state)
 		nqvalues = self.clone_dqn.predict(next_state_batch)
-		nqvalues = nqvalues.max(1)[0]
+		nqvalues = nqvalues.max(1)
 		mask = np.asarray(batch.is_terminal)
 		reward = np.asarray(batch.reward)
 		temp = self.gamma * nqvalues
