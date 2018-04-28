@@ -162,6 +162,15 @@ movie_dictionary = pickle.load(open(dict_path, 'rb'))
 
 dialog_config.run_mode = params['run_mode']
 dialog_config.auto_suggest = params['auto_suggest']
+nlg_model_path = params['nlg_model_path']
+diaact_nl_pairs = params['diaact_nl_pairs']
+nlg_model = nlg()
+nlg_model.load_nlg_model(nlg_model_path)
+nlg_model.load_predefine_act_nl_pairs(diaact_nl_pairs)
+
+nlu_model_path = params['nlu_model_path']
+nlu_model = nlu()
+nlu_model.load_nlu_model(nlu_model_path)
 
 ################################################################################
 #   Parameters for Agents
@@ -186,7 +195,26 @@ agent_params['critic_lr'] = params['critic_lr']
 agent_params['gan_critic_lr'] = params['gan_critic_lr']
 agent_params['expert_path'] = params['expert_path']
 agent_params['expert_weights'] = params['expert_weights']
-## if there are additional agent parameters to be added for our implementation
+# if there are additional agent parameters to be added for our implementation
+usersim_params = {}
+usersim_params['max_turn'] = max_turn
+usersim_params['slot_err_probability'] = params['slot_err_prob']
+usersim_params['slot_err_mode'] = params['slot_err_mode']
+usersim_params['intent_err_probability'] = params['intent_err_prob']
+usersim_params['simulator_run_mode'] = params['run_mode']
+usersim_params['simulator_act_level'] = params['act_level']
+usersim_params['learning_phase'] = params['learning_phase']
+
+if agt==14:
+    agent_params['movie_dictionary'] = movie_dictionary
+    agent_params['act_set'] = act_set
+    agent_params['slot_set'] = slot_set
+    agent_params['usersim_params'] = usersim_params
+    agent_params['movie_kb'] = movie_kb
+    agent_params['goal_set'] = goal_set
+    agent_params['nlg'] = nlg_model 
+    agent_params['nlu'] = nlu_model
+#
 
 if agt == 0:
     agent = AgentCmd(movie_kb, act_set, slot_set, agent_params)
@@ -246,15 +274,10 @@ else:
     pass
 
 
+
 ################################################################################
 # load trained NLG model
 ################################################################################
-nlg_model_path = params['nlg_model_path']
-diaact_nl_pairs = params['diaact_nl_pairs']
-nlg_model = nlg()
-nlg_model.load_nlg_model(nlg_model_path)
-nlg_model.load_predefine_act_nl_pairs(diaact_nl_pairs)
-
 agent.set_nlg_model(nlg_model)
 user_sim.set_nlg_model(nlg_model)
 
@@ -262,9 +285,6 @@ user_sim.set_nlg_model(nlg_model)
 ################################################################################
 # load trained NLU model
 ################################################################################
-nlu_model_path = params['nlu_model_path']
-nlu_model = nlu()
-nlu_model.load_nlu_model(nlu_model_path)
 
 agent.set_nlu_model(nlu_model)
 user_sim.set_nlu_model(nlu_model)
