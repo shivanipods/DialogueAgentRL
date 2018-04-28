@@ -86,7 +86,8 @@ if __name__ == "__main__":
     # load NLG & NLU model
     parser.add_argument('--nlg_model_path', dest='nlg_model_path', type=str, default='./deep_dialog/models/nlg/lstm_tanh_relu_[1468202263.38]_2_0.610.p', help='path to model file')
     parser.add_argument('--nlu_model_path', dest='nlu_model_path', type=str, default='./deep_dialog/models/nlu/lstm_[1468447442.91]_39_80_0.921.p', help='path to the NLU model file')
-    
+    parser.add_argument('--expert_path', dest='expert_path', type=str, default='./deep_dialog/checkpoints/dqn_keras_2/agt_10_100_400_0.94000.json') 
+    parser.add_argument('--expert_weights', dest='expert_weights', type=str, default='./deep_dialog/checkpoints/dqn_keras_2/agt_10_100_400_0.94000.h5') 
     parser.add_argument('--act_level', dest='act_level', type=int, default=0, help='0 for dia_act level; 1 for NL level')
     parser.add_argument('--run_mode', dest='run_mode', type=int, default=0, help='run_mode: 0 for default NL; 1 for dia_act; 2 for both')
     parser.add_argument('--auto_suggest', dest='auto_suggest', type=int, default=0, help='0 for no auto_suggest; 1 for auto_suggest')
@@ -183,6 +184,8 @@ agent_params['lrate'] = params['lrate']
 agent_params['actor_lr'] = params['actor_lr']
 agent_params['critic_lr'] = params['critic_lr']
 agent_params['gan_critic_lr'] = params['gan_critic_lr']
+agent_params['expert_path'] = params['expert_path']
+agent_params['expert_weights'] = params['expert_weights']
 ## if there are additional agent parameters to be added for our implementation
 
 if agt == 0:

@@ -71,7 +71,7 @@ class AgentAdverserialA2C(Agent):
 		self.discriminator_lr = params.get('discriminator_lr', 0.0005)
 		self.discriminator_batch_size = params.get('discriminator_batch_size', 1)
 		self.expert_path = params["expert_path"]
-
+                self.reg_cost = self.params.get('reg_cost', 1e-3)
 
 		## warm start:
 		## there is no warm start since there are is no experience replay
@@ -79,9 +79,8 @@ class AgentAdverserialA2C(Agent):
 
 		self.max_turn = params['max_turn'] + 4
 		self.state_dimension = 2 * self.act_cardinality + 7 * self.slot_cardinality + 3 + self.max_turn
-
+                self.expert_weights = params['expert_weights']
 		# Build models
-		self.build_expert_model()
 		self.build_actor_model(self.actor_lr)
 		self.build_critic_model(self.critic_lr)
 		self.build_critic_model(self.gan_critic_lr, True)
@@ -96,15 +95,17 @@ class AgentAdverserialA2C(Agent):
 			self.load(params['trained_discriminator_model_path'], "discriminator")
 			self.predict_mode = True
 			self.warm_start = 2
-		self.dqn = DQN(self.state_dimension, self.hidden_size, self.hidden_size, self.num_actions)
-		self.clone_dqn = copy.deepcopy(self.dqn)
+		#self.expert = DQN(self.state_dimension, self.hidden_size, self.hidden_size, self.num_actions)
+		self.expert = self.build_expert_model()
+		self.clone_dqn = copy.deepcopy(self.expert)
 		
 		self.cur_bellman_err = 0
 			
 		# Prediction Mode: load trained DQN model
-		if params['trained_dqn_model_path'] != None:
-		    self.dqn.model = copy.deepcopy(self.load_trained_DQN(params['trained_model_path']))
-		    self.clone_dqn = copy.deepcopy(self.dqn)
+                if params['expert_path'] != None:
+		    # self.dqn.model = model_from_json(params['expert_path'])
+                    # copy.deepcopy(self.load_trained_DQN(params['expert_path']))
+		    # self.dqn.model.load_weights(params['expert_weights'])
 		    self.predict_mode = True
 		    self.warm_start = 2
                 self.dialog_manager = DialogManager(self.dqn, user_sim, act_set, slot_set, movie_kb, 
@@ -138,7 +139,7 @@ class AgentAdverserialA2C(Agent):
 		self.actor_model = model
 
 	def build_expert_model(self):
-		model = Sequential()
+                model = Sequential()
 		fc1 = Dense(self.hidden_size, input_shape=(self.state_dimension,), activation='relu',
 					kernel_initializer=VarianceScaling(mode='fan_avg', distribution='normal'),
 					kernel_regularizer=regularizers.l2(self.reg_cost))
@@ -152,15 +153,16 @@ class AgentAdverserialA2C(Agent):
 		model.add(fc1)
 		model.add(fc2)
 		model.add(fc3)
-		model.load_weights(self.expert_path)
-		self.expert = model
+                #self.expert.model_from_json(self.expert_path)
+                model.load_weights(self.expert_weights)
+                return model
         
 	def load_trained_DQN(self, path):
 	    """ Load the trained DQN from a file """
 	    
-	    trained_file = pickle.load(open(path, 'rb'))
-	    model = trained_file['model']
-	    
+	    #trained_file = pickle.load(open(path, 'rb'))
+	    #model = trained_file['model']
+	    model = self.dqn.load_weights(path)
 	    print "trained DQN Parameters:", json.dumps(trained_file['params'], indent=2)
 	    return model 
 	
@@ -184,15 +186,20 @@ class AgentAdverserialA2C(Agent):
 
 	def build_critic_model(self, critic_lr, is_adverserial = False):
 		model = Sequential()
-		fc1 = Dense(50, input_shape=(self.state_dimension,), activation='relu',
+		fc1 = Dense(50, input_shape=(self.state_dimension,), 
+                        activation='relu',
 			kernel_initializer=VarianceScaling(mode='fan_avg',
-			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
+			distribution='normal'), 
+                        kernel_regularizer=regularizers.l2(0.01))
 		fc2 = Dense(50, activation='relu',
 			kernel_initializer=VarianceScaling(mode='fan_avg',
-			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
+			distribution='normal'), 
+                        kernel_regularizer=regularizers.l2(0.01))
 		fc3 = Dense(1, activation='relu',
 			kernel_initializer=VarianceScaling(mode='fan_avg',
-			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
+			distribution='normal'), 
+                        kernel_regularizer=regularizers.l2(0.01))
+		model.add(fc1)
 		model.add(fc2)
 		model.add(fc3)
 		model.compile(loss='mse', optimizer=Adam(lr=self.critic_lr))
@@ -327,10 +334,9 @@ class AgentAdverserialA2C(Agent):
 		except:
 			ipdb.set_trace()
                 self.action = self.action.squeeze(0)
-		act_slot_response = copy.deepcopy(
-                self.feasible_actions[np.random.choice(self.num_actions, 1,
-                    p=self.action)[0]])
-                return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}, self.action[0]
+                idx = np.random.choice(self.num_actions, 1, p=self.action)[0]
+		act_slot_response = copy.deepcopy(self.feasible_actions[idx])
+                return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}, idx, self.action[idx]
 
 	def rule_policy(self):
 		""" Rule Policy """
