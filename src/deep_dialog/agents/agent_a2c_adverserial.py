@@ -1,7 +1,6 @@
 from deep_dialog import dialog_config
 from collections import deque
 from agent import Agent
-## so you can remove extreeous agent information in the dqn-pytorch file
 import os
 import sys
 import argparse
@@ -23,6 +22,7 @@ from deep_dialog.qlearning import DQN
 import gym
 from deep_dialog.dialog_system import DialogManager, text_to_dict
 import matplotlib
+import pickle
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -30,12 +30,10 @@ import matplotlib.pyplot as plt
 sess = tf.Session(config=tf.ConfigProto(log_device_placement=True,allow_soft_placement=True))
 keras.backend.set_session(sess)
 
-
 def one_hot(action, categories=4):
 	x = np.zeros(categories)
 	x[action] = 1
 	return x
-
 
 class AgentAdverserialA2C(Agent):
 	def __init__(self, movie_dict=None, act_set=None, slot_set=None, params=None):
@@ -56,13 +54,15 @@ class AgentAdverserialA2C(Agent):
 		self.epsilon = params['epsilon']
 		#
 		self.agent_run_mode = params['agent_run_mode']
+		self.reg_cost = self.params.get('reg_cost', 1e-3)
 		#
 		self.agent_act_level = params['agent_act_level']
+
 		# experience replay
 		# self.experience_replay_pool_size = params.get('experience_replay_pool_size', 1000)
 		# self.experience_replay_pool = [] #Replay_Memory(self.experience_replay_pool_size)
+
 		self.hidden_size = params.get('dqn_hidden_size', 60)
-		# gamma : discount factor
 		self.gamma = params.get('gamma', 0.99)
 		self.predict_mode = params.get('predict_mode', False)
 		self.actor_lr = params.get('actor_lr', 0.0005)
@@ -71,7 +71,6 @@ class AgentAdverserialA2C(Agent):
 		self.discriminator_lr = params.get('discriminator_lr', 0.0005)
 		self.discriminator_batch_size = params.get('discriminator_batch_size', 1)
 		self.expert_path = params["expert_path"]
-
 
 		## warm start:
 		## there is no warm start since there are is no experience replay
@@ -96,20 +95,7 @@ class AgentAdverserialA2C(Agent):
 			self.load(params['trained_discriminator_model_path'], "discriminator")
 			self.predict_mode = True
 			self.warm_start = 2
-		self.dqn = DQN(self.state_dimension, self.hidden_size, self.hidden_size, self.num_actions)
-		self.clone_dqn = copy.deepcopy(self.dqn)
-		
-		self.cur_bellman_err = 0
-			
-		# Prediction Mode: load trained DQN model
-		if params['trained_dqn_model_path'] != None:
-		    self.dqn.model = copy.deepcopy(self.load_trained_DQN(params['trained_model_path']))
-		    self.clone_dqn = copy.deepcopy(self.dqn)
-		    self.predict_mode = True
-		    self.warm_start = 2
-                self.dialog_manager = DialogManager(self.dqn, user_sim, act_set, slot_set, movie_kb, 
-                                params['is_a2c'])
-	
+
 	def load(self, name, model_name):
 		if model_name == "actor":
 			self.actor_model.load(name)
@@ -131,12 +117,6 @@ class AgentAdverserialA2C(Agent):
 			self.discriminator.save_weights(name)
 			self.critic_model.save_weights(name)
 
-	def load_actor_model(self, model_config_path, lr):
-		with open(model_config_path, 'r') as f:
-			model = keras.models.model_from_json(f.read())
-		model.compile(loss='categorical_crossentropy', optimizer=Adam(lr=lr))
-		self.actor_model = model
-
 	def build_expert_model(self):
 		model = Sequential()
 		fc1 = Dense(self.hidden_size, input_shape=(self.state_dimension,), activation='relu',
@@ -154,19 +134,10 @@ class AgentAdverserialA2C(Agent):
 		model.add(fc3)
 		model.load_weights(self.expert_path)
 		self.expert = model
-        
-	def load_trained_DQN(self, path):
-	    """ Load the trained DQN from a file """
-	    
-	    trained_file = pickle.load(open(path, 'rb'))
-	    model = trained_file['model']
-	    
-	    print "trained DQN Parameters:", json.dumps(trained_file['params'], indent=2)
-	    return model 
-	
-        def build_actor_model(self, actor_lr):
+
+	def build_actor_model(self, actor_lr):
 		model = Sequential()
-		fc1 = Dense(50, input_shape=(self.state_dimension,), 
+		fc1 = Dense(50, input_shape=(self.state_dimension,),
 			activation='relu',
 			kernel_initializer=VarianceScaling(mode='fan_avg',
 			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
@@ -193,6 +164,7 @@ class AgentAdverserialA2C(Agent):
 		fc3 = Dense(1, activation='relu',
 			kernel_initializer=VarianceScaling(mode='fan_avg',
 			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
+		model.add(fc1)
 		model.add(fc2)
 		model.add(fc3)
 		model.compile(loss='mse', optimizer=Adam(lr=self.critic_lr))
@@ -220,7 +192,6 @@ class AgentAdverserialA2C(Agent):
 
 	def initialize_episode(self):
 		""" Initialize a new episode. This function is called every time a new episode is run. """
-
 		self.current_slot_id = 0
 		self.phase = 0
 		self.request_set = ['moviename', 'starttime', 'city', 'date', 'theater', 'numberofpeople']
@@ -316,45 +287,17 @@ class AgentAdverserialA2C(Agent):
 
 	def state_to_action(self, state):
 		""" A2C: Input state, output action """
-		## Dialogue manager calls this to fill the experience buffer ##
-		## TODO: Fix this for A2C return multinomial output
-		self.representation = self.prepare_state_representation(state)
-		batch_size = self.representation.shape[0]
-		# self.action = self.run_policy(self.representation)
-		try:
-			self.action = self.actor_model.predict_on_batch(
-				self.representation.reshape(1, batch_size))
-		except:
-			ipdb.set_trace()
-                self.action = self.action.squeeze(0)
+		representation = self.prepare_state_representation(state)
+		representation = np.expand_dims(np.asarray(representation), axis=0)
+		self.action = self.actor_model.predict(representation)
+		self.action = self.action.squeeze(0)
+		idx = np.random.choice(self.num_actions, 1, p=self.action)[0]
 		act_slot_response = copy.deepcopy(
-                self.feasible_actions[np.random.choice(self.num_actions, 1,
-                    p=self.action)[0]])
-                return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}, self.action[0]
-
-	def rule_policy(self):
-		""" Rule Policy """
-
-		if self.current_slot_id < len(self.request_set):
-			slot = self.request_set[self.current_slot_id]
-			self.current_slot_id += 1
-
-			act_slot_response = {}
-			act_slot_response['diaact'] = "request"
-			act_slot_response['inform_slots'] = {}
-			act_slot_response['request_slots'] = {slot: "UNK"}
-		elif self.phase == 0:
-			act_slot_response = {'diaact': "inform", 'inform_slots': {'taskcomplete': "PLACEHOLDER"},
-								 'request_slots': {}}
-			self.phase += 1
-		elif self.phase == 1:
-			act_slot_response = {'diaact': "thanks", 'inform_slots': {}, 'request_slots': {}}
-
-		return self.action_index(act_slot_response)
+			self.feasible_actions[idx])
+		return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}, idx, self.action[idx]
 
 	def action_index(self, act_slot_response):
 		""" Return the index of action """
-
 		for (i, action) in enumerate(self.feasible_actions):
 			if act_slot_response == action:
 				return i
@@ -362,29 +305,6 @@ class AgentAdverserialA2C(Agent):
 		raise Exception("action index not found")
 		return None
 
-	def return_greedy_action(self, state_representation):
-		# TODO: Fix this A2C
-		state_var = variable(torch.FloatTensor(state_representation).unsqueeze(0))
-		if torch.cuda.is_available():
-			state_var = state_var.cuda()
-		qvalues = self.actor_model.predict(np.asarray(state_var))
-		action = qvalues.data.max(1)[1]
-		return action[0]
-
-	def run_policy(self, representation):
-		""" epsilon-greedy policy """
-		# TODO: Remove this for A2C
-		if random.random() < self.epsilon:
-			return random.randint(0, self.num_actions - 1)
-		else:
-			if self.warm_start == 1:
-				## if in training mode(not prediction) fill until you cant anymore
-				if len(self.experience_replay_pool) > self.experience_replay_pool_size:
-					self.warm_start = 2
-				return self.rule_policy()
-			else:
-				# return self.dqn.predict(representation, {}, predict_model=True)
-				return self.return_greedy_action(representation)
 
 	def get_advantage(self, states, rewards, is_adversary = False):
 		T = len(rewards)
@@ -416,28 +336,52 @@ class AgentAdverserialA2C(Agent):
 		return advantage, gain
 
 	def generate_expert_episode(self):
-		## TODO: Initialize expert policy as the policy that takes epsilon greedy actions in DQN trained agent
-                states = []
-                actions = []
-                rewards = []
-                done = False
-                while(not done):
-                    temp, idx, act = dialog_manager.next_turn()
-                    episode_over = temp[0]
-                    cumulative_reward += reward
-		    if episode_over:
-                        if reward > 0: 
-                            successes += 1
-                            print ("Expert episode %s: Success" % (episode))
-                        else: print ("Expert episode %s: Fail" % (episode))
-                        #cumulative_turns += dialog_manager.state_tracker.turn_count
-                        #cumulative_turn_list.append(dialog_manager.state_tracker.turn_count)
-                        #cumulative_reward_list.append(episode_reward)
-                    states.append(dialog_manager.state)
-                    rewards.append(reward)
-                    actions.append(act)
-                #indexes.append(idx)
-                return states, actions, rewards
+		states = []
+		actions = []
+		rewards = []
+		cumulative_reward = 0
+		done = False
+		successes = 0
+		episode = 0
+		while True:
+			states = []
+			rewards = []
+			actions = []
+			self.manager.initialize_episode() ## turn count of state_tracker set to 0
+			try:
+				while (not done):
+					########################################################################
+					# CALL AGENT TO TAKE HER TURN (part of the dialogue manager next_turn
+					# function is called and executed here : self.state and self.agent_action to be set
+					########################################################################
+					state = self.manager.state_tracker.get_state_for_agent()  ## this code is tracking the dialogue state
+					representation = self.prepare_state_representation(state)
+					state_tensor = np.expand_dims(np.asarray(representation), axis=0)
+					qvalues = self.expert.predict(state_tensor)
+					action = np.argmax(qvalues)
+					act_slot_response = copy.deepcopy(self.feasible_actions[action])
+					agent_action = {'act_slot_response': act_slot_response, 'act_slot_value_response': None}
+					## update agent state and action in the dialogue manager for it to update user action and next state
+					temp  = self.manager.register_agent_action(state, agent_action, record_training_data=False)
+					done = temp[0]
+					reward = temp[1]
+					cumulative_reward += temp[1]
+					if done:
+						if reward > 0:
+							successes += 1
+							# return the first succesful dialogue
+							return states, actions, rewards
+						else:
+							done = False
+					states.append(representation)
+					rewards.append(reward)
+					actions.append(action)
+			except:
+				## sometimes line 380 throws errors
+				## this issue is occuring only for failed episodes, which wont be chosen anyway, so its fine
+				continue
+		return states, actions, rewards
+
 
 	def train(self, states, actions, rewards, indexes, gamma=0.99):
 		states = [self.prepare_state_representation(x) for x in states]
@@ -446,16 +390,13 @@ class AgentAdverserialA2C(Agent):
 		advantage = advantage.reshape(-1, 1)
 		actions = np.asarray(actions)
 
-		# L(\theta) from the handout
-                #act_target[np.arange(len(states)), np.array(actions)] \
-                #        = (np.array(discounted_rewards) - np.array(values))
-                targets = advantage #* actions
+		targets = advantage #* actions
 		act_target = np.zeros((len(states),self.num_actions))
-                act_target[np.arange(len(states)), np.array(indexes)] \
-                                    = targets.squeeze(1)
+		act_target[np.arange(len(states)), np.array(indexes)] \
+									= targets.squeeze(1)
 		states = np.asarray(states)
-                #TODO: Check if we want to scale rewards
-                rewards = np.asarray(rewards)
+		#TODO: Check if we want to scale rewards
+		rewards = np.asarray(rewards)
 		tot_rewards = np.sum(rewards)
 
 		self.actor_model.train_on_batch(states, act_target)
@@ -463,8 +404,7 @@ class AgentAdverserialA2C(Agent):
 
 		## sample from an expert episode and the current simulated episode
 		## in Goodfellow's original paper, he does it k times
-		## TODO - Done: Adversarial expert episide will be generated by the best DQN episodes
-		expert_states, expert_actions = self.generate_expert_episode()
+		expert_states, expert_actions, expert_rewards = self.generate_expert_episode()
 		sampled_expert_index = np.random.randint(0, len(expert_states))
 		one_hot_expert_action = np.zeros((1, self.num_actions))
 		one_hot_expert_action[:, expert_actions[sampled_expert_index]] = 1
@@ -473,7 +413,7 @@ class AgentAdverserialA2C(Agent):
 		sampled_expert_example = np.concatenate((sampled_expert_state, one_hot_expert_action), axis=1)
 		sampled_simulated_index = np.random.randint(0, len(states))
 		one_hot_simulated_action = np.zeros((1, self.num_actions))
-		one_hot_simulated_action[:, actions[sampled_simulated_index]] = 1
+		one_hot_simulated_action[:, indexes[sampled_simulated_index]] = 1
 		sampled_simulated_state = states[sampled_simulated_index]
 		sampled_simulated_state = np.expand_dims(sampled_simulated_state, 0)
 		sampled_simulated_example = np.concatenate((sampled_simulated_state, one_hot_simulated_action), axis=1)
@@ -488,7 +428,7 @@ class AgentAdverserialA2C(Agent):
 		## compute gan rewards
 		## call predict on a batch of the current simulated  episodes to get the class value
 		state_action_pairs = []
-		for s, a in zip(states, actions):
+		for s, a in zip(states, indexes):
 			one_hot = np.zeros(self.num_actions)
 			one_hot[a] = 1
 			concat_s_a = np.concatenate((s, one_hot))
@@ -497,24 +437,16 @@ class AgentAdverserialA2C(Agent):
 		gan_rewards = (-np.log(1 - probability_simulation)).flatten().tolist()
 
 		''' Train gan actor-critic network '''
-		gan_values = self.compute_baseline(states, isgan=True)
-		gan_discounted_rewards = self.get_value_reward(states, gan_rewards, gan_values)
+		gan_advantage, gan_gains = self.get_advantage(states, gan_rewards, True)
+		gan_advantage = gan_advantage.reshape(-1, 1)
+
+		gan_targets = gan_advantage
 		gan_act_target = np.zeros((len(states), self.num_actions))
-		gan_act_target[np.arange(len(states)), np.array(actions)] = (np.array(gan_discounted_rewards)
-																	 - np.array(gan_values))
-		gan_critic_target = np.array(gan_discounted_rewards)
-		gan_actor_loss = self.actor_model.train_on_batch(states, gan_act_target)
-		gan_critic_loss = self.adversarial_critic_model.train_on_batch(states, gan_critic_target)
+		gan_act_target[np.arange(len(states)), np.array(indexes)] \
+			= gan_targets.squeeze(1)
 
-		advantage, gains = self.get_advantage(states, rewards, True)
-		targets = advantage #* actions
-		act_target = np.zeros((len(states),self.num_actions))
-                act_target[np.arange(len(states)), np.array(indexes)] \
-                                    = targets.squeeze(1)
-
-		self.actor_model.train_on_batch(states, act_target)
-		self.critic_model.train_on_batch(states, gains)
-
+		self.actor_model.train_on_batch(states, gan_act_target)
+		self.adversarial_critic_model.train_on_batch(states, gan_gains)
 		return tot_rewards
 
 	def evaluate(self, env, episode, num_episodes=100, render=False):

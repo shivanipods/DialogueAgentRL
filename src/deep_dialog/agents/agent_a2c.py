@@ -30,7 +30,6 @@ sess = tf.Session(config=tf.ConfigProto(log_device_placement=True,
                                         allow_soft_placement=True))
 keras.backend.set_session(sess)
 
-
 def one_hot(action, categories=4):
     x = np.zeros(categories)
     x[action] = 1
@@ -58,9 +57,11 @@ class AgentA2C(Agent):
         self.agent_run_mode = params['agent_run_mode']
         self.reg_cost = self.params.get('reg_cost', 1e-3)
         self.agent_act_level = params['agent_act_level']
+
         # experience replay
         # self.experience_replay_pool_size = params.get('experience_replay_pool_size', 1000)
         # self.experience_replay_pool = [] #Replay_Memory(self.experience_replay_pool_size)
+
         self.hidden_size = params.get('dqn_hidden_size', 60)
         # gamma : discount factor
         self.gamma = params.get('gamma', 1)
@@ -78,7 +79,7 @@ class AgentA2C(Agent):
             self.actor_model = copy.deepcopy(self.load(
                 params['trained_actor_model_path']))
             self.critic_model = copy.deepcopy(self.load(
-                params['trained_actor_model_path']))
+                params['trained_critic_model_path']))
             self.predict_mode = True
             self.warm_start = 2
 
@@ -93,12 +94,6 @@ class AgentA2C(Agent):
             self.actor_model.save_weights(name)
         else:
             self.critic_model.save_weights(name)
-
-    def load_actor_model(self, model_config_path, lr):
-        with open(model_config_path, 'r') as f:
-            model = keras.models.model_from_json(f.read())
-        model.compile(loss='categorical_crossentropy', optimizer=Adam(lr=lr))
-        self.actor_model = model
 
     def build_actor_model(self):
         model = Sequential()
@@ -242,26 +237,6 @@ class AgentA2C(Agent):
             self.feasible_actions[idx])
         return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}, idx, self.action[idx]
 
-    def rule_policy(self):
-        """ Rule Policy """
-
-        if self.current_slot_id < len(self.request_set):
-            slot = self.request_set[self.current_slot_id]
-            self.curent_slot_id += 1
-
-            act_slot_response = {}
-            act_slot_response['diaact'] = "request"
-            act_slot_response['inform_slots'] = {}
-            act_slot_response['request_slots'] = {slot: "UNK"}
-        elif self.phase == 0:
-            act_slot_response = {'diaact': "inform", 'inform_slots': {'taskcomplete': "PLACEHOLDER"},
-                                 'request_slots': {}}
-            self.phase += 1
-        elif self.phase == 1:
-            act_slot_response = {'diaact': "thanks", 'inform_slots': {}, 'request_slots': {}}
-
-        return self.action_index(act_slot_response)
-
     def action_index(self, act_slot_response):
         """ Return the index of action """
 
@@ -271,15 +246,6 @@ class AgentA2C(Agent):
         print act_slot_response
         raise Exception("action index not found")
         return None
-
-    def return_greedy_action(self, state_representation):
-        # TODO: Fix this A2C
-        state_var = variable(torch.FloatTensor(state_representation).unsqueeze(0))
-        if torch.cuda.is_available():
-            state_var = state_var.cuda()
-        qvalues = self.actor_model.predict(np.asarray(state_var))
-        action = qvalues.data.max(1)[1]
-        return action[0]
 
     def get_advantage(self, states, rewards):
         T = len(rewards)

@@ -103,6 +103,8 @@ if __name__ == "__main__":
     parser.add_argument('--warm_start_epochs', dest='warm_start_epochs', type=int, default=100, help='the number of epochs for warm start')
     
     parser.add_argument('--trained_model_path', dest='trained_model_path', type=str, default=None, help='the path for trained model')
+    parser.add_argument('--expert_path', dest='expert_path', type=str, default=None,
+                        help='the path for trained model for adversarial a2c')
     parser.add_argument('-o', '--write_model_dir', dest='write_model_dir', type=str, default='./deep_dialog/checkpoints/', help='write model to disk')
     parser.add_argument('--final_checkpoint_path', dest='final_checkpoint_path', type=str, default=None, help='path to the final checkpoint of model to be tested')
     parser.add_argument('--save_check_point', dest='save_check_point', type=int, default=1, help='number of epochs for saving model')
@@ -182,6 +184,7 @@ agent_params['cmd_input_mode'] = params['cmd_input_mode']
 agent_params['lrate'] = params['lrate']
 agent_params['actor_lr'] = params['actor_lr']
 agent_params['critic_lr'] = params['critic_lr']
+agent_params['expert_path'] = params['expert_path']
 agent_params['gan_critic_lr'] = params['gan_critic_lr']
 ## if there are additional agent parameters to be added for our implementation
 
@@ -272,7 +275,10 @@ user_sim.set_nlu_model(nlu_model)
 ################################################################################
 dialog_manager = DialogManager(agent, user_sim, act_set, slot_set, movie_kb, 
         params['is_a2c'])
-    
+
+if params['is_a2c'] and agt == 14:
+    ## since adversarial a2c needs the dialogue manager to simulate expert episode
+    agent.manager = dialog_manager
     
 ################################################################################
 #   Run num_episodes Conversation Simulations
@@ -319,7 +325,7 @@ def save_model(path, agt, success_rate, model_agent, best_epoch, cur_epoch, is_a
             print("Saved model to disk")
         except Exception, e:
             print('Error: Writing model fails: %s' % (filepath,))
-    if agt==13 and is_a2c:
+    if (agt==13 or agt == 14) and is_a2c:
         try:
             actor_json = model_agent["actor_model"].to_json()
             with open(filepath + ".actor.json", "w") as json_file:
@@ -331,7 +337,7 @@ def save_model(path, agt, success_rate, model_agent, best_epoch, cur_epoch, is_a
             model_agent["critic_model"].save_weights(filepath + ".critic.h5")
         except:
             print('Error: Writing model fails: %s' % (filepath,))
-    ## TODO: Add support for adeversarial dqn
+    ## TODO: Add support for adeversarial dqn (to save gan critic)
     checkpoint['params'] = params
     pickle.dump(checkpoint, open(filepath, "wb"))
 
@@ -353,7 +359,7 @@ def load_model(path, is_a2c = False):
             print("Error: Reading model fails: %s" % (path,))
             print(e)
             return None
-    if agt == 13 and is_a2c:
+    if (agt == 13 or agt == 14) and is_a2c:
         try:
             json_file = open(path + '.actor.json', 'r')
             loaded_model_json = json_file.read()
@@ -376,7 +382,6 @@ def load_model(path, is_a2c = False):
             print("Error: Reading model fails: %s" % (path,))
             print(e)
             return None
-    ## TODO No support for adversarial
     return checkpoint
 
 

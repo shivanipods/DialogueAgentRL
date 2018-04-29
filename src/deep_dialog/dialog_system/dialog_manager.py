@@ -38,6 +38,35 @@ class DialogManager:
         self.print_function(user_action = self.user_action)
         self.agent.initialize_episode()
 
+    def register_agent_action(self, state, agent_action, record_training_data=True):
+        ########################################################################
+        #   Update STATE and ACTION
+        ########################################################################
+        self.state = state
+        self.agent_action = agent_action
+        ########################################################################
+        #   Register AGENT action with the state_tracker
+        ########################################################################
+        self.state_tracker.update(agent_action=self.agent_action)
+
+        self.agent.add_nl_to_action(self.agent_action)  # add NL to Agent Dia_Act
+        self.print_function(agent_action=self.agent_action['act_slot_response'])
+
+        ########################################################################
+        #   CALL USER TO TAKE HER TURN
+        ########################################################################
+        self.sys_action = self.state_tracker.dialog_history_dictionaries()[-1]
+        self.user_action, self.episode_over, dialog_status = self.user.next(self.sys_action)
+        self.reward = self.reward_function(dialog_status)
+
+        ########################################################################
+        #   Update state tracker with latest user action
+        ########################################################################
+        if self.episode_over != True:
+            self.state_tracker.update(user_action=self.user_action)
+
+        return (self.episode_over, self.reward)
+
     def next_turn(self, record_training_data=True):
         """ This function initiates each subsequent exchange between agent and user (agent first) """
         
@@ -73,7 +102,7 @@ class DialogManager:
         ########################################################################
         #  Inform agent of the outcome for this timestep (s_t, a_t, r, s_{t+1}, episode_over)
         ########################################################################
-        # No Experience Replay in A2C # TODO: Fix for A2C
+        # No Experience Replay in A2C
         if self.is_a2c==False and record_training_data:
             self.agent.register_experience_replay_tuple(self.state, self.agent_action, self.reward, self.state_tracker.get_state_for_agent(), self.episode_over)
         
