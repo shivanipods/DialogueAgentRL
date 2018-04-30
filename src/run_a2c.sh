@@ -13,6 +13,6 @@ CUDA_VISIBLE_DEVICES=0 python run.py --agt 13 --usr 1 --max_turn 40 \
 	      --goal_file_path ./deep_dialog/data/user_goals_first_turn_template.part.movie.v1.p \
 	      --warm_start 1 \
 	      --warm_start_epochs 1 \
-          --cmd_input_mode 0 \
-          --save_check_point 20 \
-          --is_a2c
+              --cmd_input_mode 0 \
+              --save_check_point 20 \
+              --is_a2c
