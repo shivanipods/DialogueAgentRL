@@ -8,3 +8,6 @@ from .agent_a2c import *
 from .agent_a2c_adverserial import *
 from .agent_recurrent import *
 from .agent_acer import *
+from .agent_a2c_shared import *
+from .agent_a2c_adverserial import *
+from .agent_recurrent import *

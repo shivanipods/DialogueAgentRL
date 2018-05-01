@@ -38,7 +38,7 @@ from deep_dialog.dialog_system import DialogManager, text_to_dict
 from deep_dialog.agents import AgentCmd, InformAgent, RequestAllAgent, \
         RandomAgent, EchoAgent, RequestBasicsAgent, \
         AgentDQN, AgentDQNKeras, AgentDQNBoltzmann, AgentBBQN, AgentA2C, \
-        AgentAdverserialA2C, AgentACER
+        AgentAdverserialA2C, AgentACER, AgentSharedA2C
 from deep_dialog.usersims import RuleSimulator
 
 from deep_dialog import dialog_config
@@ -97,6 +97,8 @@ if __name__ == "__main__":
     # RL agent parameters
     parser.add_argument('--experience_replay_pool_size', dest='experience_replay_pool_size', type=int, default=1000, help='the size for experience replay')
     parser.add_argument('--dqn_hidden_size', dest='dqn_hidden_size', type=int, default=60, help='the hidden size for DQN')
+    parser.add_argument('--a2c_hidden_size', dest='a2c_hidden_size', type=int, default=50,
+                        help='the hidden size for A2C')
     parser.add_argument('--batch_size', dest='batch_size', type=int, default=16, help='batch size')
     parser.add_argument('--gamma', dest='gamma', type=float, default=0.9, help='gamma for DQN')
     parser.add_argument('--predict_mode', dest='predict_mode', type=bool, default=False, help='predict model for DQN')
@@ -123,7 +125,7 @@ if __name__ == "__main__":
     parser.add_argument('--discriminator_lr', dest='discriminator_lr', default=0.0005)
     parser.add_argument('--n', dest='n', default=50, type=int, help='critics N')
     parser.add_argument("--is_a2c", dest='is_a2c', default=False, action="store_true", help='Train DQN or A2C')
-
+    parser.add_argument('--critw', dest='critw', default=2.0, type=float, help='critic loss weight')
     args = parser.parse_args()
     params = vars(args)
 
@@ -218,6 +220,8 @@ if params['is_a2c']:
     elif agt == 14:
         agent = AgentAdverserialA2C(movie_kb, act_set, slot_set, agent_params)
     elif agt == 15:
+        agent = AgentSharedA2C(movie_kb, act_set, slot_set, agent_params)
+    elif agt == 16:
         agent = AgentACER(movie_kb, act_set, slot_set, agent_params)
 
 ################################################################################
@@ -318,7 +322,7 @@ def save_model(path, agt, success_rate, model_agent, best_epoch, cur_epoch, is_a
     checkpoint = {}
     #ipdb.set_trace()
     if agt == 9: checkpoint['model'] = copy.deepcopy(model_agent.dqn.model)
-    if agt == 10 or agt == 11 or agt == 12:
+    if agt == 10 or agt == 11 or agt == 12 or agt == 15:
         try:
             # serialize model to JSON
             model_json = model_agent.to_json()
@@ -348,7 +352,7 @@ def save_model(path, agt, success_rate, model_agent, best_epoch, cur_epoch, is_a
 
 def load_model(path, is_a2c = False):
     checkpoint = {}
-    if agt == 10 or agt == 11 or agt == 12:
+    if agt == 10 or agt == 11 or agt == 12 or agt == 15:
         try:
             json_file = open(path + '.json', 'r')
             loaded_model_json = json_file.read()
@@ -381,7 +385,8 @@ def load_model(path, is_a2c = False):
             checkpoint["critic_model"] = critic_model
             print("Loaded model from disk")
             print('loaded the checkpoint %s' % (path,))
-            return loaded_model
+            loaded_model = (actor_model, critic_model)
+            checkpoint["model"] = loaded_model
         except Exception, e:
             print("Error: Reading model fails: %s" % (path,))
             print(e)
@@ -572,7 +577,7 @@ def run_episodes(count, status):
                 save_performance_records(params['write_model_dir'], agt, performance_records)
         
         # simulation for A2C
-        if params['is_a2c'] and (agt==13 or agt == 14) and params['trained_model_path'] == None:
+        if params['is_a2c'] and (agt==13 or agt == 14 or agt == 15) and params['trained_model_path'] == None:
             agent.predict_mode = True
             simulation_res, states, rewards, indexes, actions =  simulation_epoch(simulation_epoch_size)
             
@@ -586,9 +591,12 @@ def run_episodes(count, status):
                     simulation_epoch(simulation_epoch_size)
                 
             if simulation_res['success_rate'] > best_res['success_rate']:
-                best_model['model'] = {}
-                best_model['model']["actor_model"] = agent.actor_model
-                best_model['model']["critic_model"] = agent.critic_model
+                if agt == 13 or agt == 14:
+                    best_model['model'] = {}
+                    best_model['model']["actor_model"] = agent.actor_model
+                    best_model['model']["critic_model"] = agent.critic_model
+                elif agt == 15:
+                    best_model['model'] = agent.shared_model
                 best_res['success_rate'] = simulation_res['success_rate']
                 best_res['ave_reward'] = simulation_res['ave_reward']
                 best_res['ave_turns'] = simulation_res['ave_turns']
@@ -602,7 +610,7 @@ def run_episodes(count, status):
                 save_model(params['write_model_dir'], agt, best_res['success_rate'], best_model['model'], best_res['epoch'], episode, params['is_a2c'])
                 save_performance_records(params['write_model_dir'], agt, performance_records)
 
-        if params['is_a2c'] and (agt==15) and params['trained_model_path'] == None:
+        if params['is_a2c'] and (agt==16) and params['trained_model_path'] == None:
             agent.predict_mode = True
             simulation_res, states, rewards, indexes, actions = simulation_epoch(simulation_epoch_size)
 
@@ -646,17 +654,19 @@ def run_episodes(count, status):
     status['successes'] += successes
     status['count'] += count
     
-    if agt == 9 or agt == 10 or agt == 11 or agt == 12 or agt==13 or agt==14 or agt == 15 and params['trained_model_path'] == None:
+    if agt == 9 or agt == 10 or agt == 11 or agt == 12 or agt==13 or agt==14 or agt == 15 or agt == 16 and params['trained_model_path'] == None:
         save_model(params['write_model_dir'], agt, float(successes)/count, best_model['model'], best_res['epoch'], count)
         save_performance_records(params['write_model_dir'], agt, performance_records)
 
-def test_episodes(num_runs, status, is_a2c):
+def test_episodes(num_runs, status, is_a2c, agt):
     ## load saved best model
     ## agent best, params
     checkpoint = load_model(params["final_checkpoint_path"], is_a2c)
     ## TODO: Unsure if this copying trick works for keras implementation
     if is_a2c==False:
         agent.dqn = checkpoint["model"]
+    elif agt == 15:
+        agent.shared_model = checkpoint["model"]
     else:
         agent.actor_model = checkpoint['actor_model']
         agent.critic_model = checkpoint['critic_model']
@@ -676,4 +686,4 @@ def test_episodes(num_runs, status, is_a2c):
 if not params['test_mode']:
     run_episodes(num_episodes, status)
 else:
-    test_episodes(1, status, params['is_a2c'])
+    test_episodes(1, status, params['is_a2c'], agt)
