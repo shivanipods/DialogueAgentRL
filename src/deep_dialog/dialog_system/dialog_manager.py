@@ -108,7 +108,6 @@ class DialogManager:
         
         return (self.episode_over, self.reward), idx, actions
 
-    
     def reward_function(self, dialog_status):
         """ Reward Function 1: a reward function based on the dialog_status """
         if dialog_status == dialog_config.FAILED_DIALOG:

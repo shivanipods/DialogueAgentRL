@@ -229,7 +229,6 @@ class AgentDQN(Agent):
     
     def train(self, batch_size=1, num_batches=100):
         """ Train DQN with experience replay """
-        
         for iter_batch in range(num_batches):
             self.cur_bellman_err = 0
             for iter in range(len(self.experience_replay_pool)/(batch_size)):

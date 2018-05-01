@@ -37,7 +37,8 @@ import tensorflow as tf
 from deep_dialog.dialog_system import DialogManager, text_to_dict
 from deep_dialog.agents import AgentCmd, InformAgent, RequestAllAgent, \
         RandomAgent, EchoAgent, RequestBasicsAgent, \
-        AgentDQN, AgentDQNKeras, AgentDQNBoltzmann, AgentBBQN, AgentA2C, AgentAdverserialA2C
+        AgentDQN, AgentDQNKeras, AgentDQNBoltzmann, AgentBBQN, AgentA2C, \
+        AgentAdverserialA2C, AgentACER
 from deep_dialog.usersims import RuleSimulator
 
 from deep_dialog import dialog_config
@@ -49,6 +50,7 @@ import keras
 import keras.backend as K
 from keras.models import model_from_json
 sess = tf.Session()
+import random
 K.set_session(sess)
 
 
@@ -215,6 +217,8 @@ if params['is_a2c']:
         agent = AgentA2C(movie_kb, act_set, slot_set, agent_params)
     elif agt == 14:
         agent = AgentAdverserialA2C(movie_kb, act_set, slot_set, agent_params)
+    elif agt == 15:
+        agent = AgentACER(movie_kb, act_set, slot_set, agent_params)
 
 ################################################################################
 #    Add your agent here
@@ -481,6 +485,25 @@ def warm_start_simulation():
     print ("Warm_Start %s epochs, success rate %s, ave reward %s, ave turns %s" % (episode+1, res['success_rate'], res['ave_reward'], res['ave_turns']))
     print ("Current experience replay buffer size %s" % (len(agent.experience_replay_pool)))
 
+def collect_dialogue_episodes(episodes_to_collect = 10):
+    for episode in xrange(episodes_to_collect):
+        dialog_manager.initialize_episode()
+        episode_over = False
+        episode_reward = 0
+        states = []
+        actions = []
+        rewards = []
+        while(not episode_over):
+            state = agent.prepare_state_representation(dialog_manager.state_tracker.get_state_for_agent())
+            (episode_over, reward), action, action_prob = dialog_manager.next_turn()
+            episode_reward += reward
+            states.append(state)
+            actions.append(action)
+            rewards.append(reward)
+        agent.register_experience_replay_dialogue(states, actions, rewards)
+
+
+
 
 
 def run_episodes(count, status):
@@ -492,6 +515,12 @@ def run_episodes(count, status):
         print ('warm_start starting ...')
         warm_start_simulation()
         print ('warm_start finished, start RL training ...')
+
+    if agt == 15 and params['trained_model_path'] == None:
+        print("filling experience replay with dialogue episodes")
+        collect_dialogue_episodes(warm_start_epochs)
+        print("filled up experience replay with deialogue episodes")
+
     
     for episode in xrange(count):
         print ("Episode: %s" % (episode))
@@ -572,14 +601,52 @@ def run_episodes(count, status):
             if episode % save_check_point == 0 and params['trained_model_path'] == None: # save the model every 10 episodes
                 save_model(params['write_model_dir'], agt, best_res['success_rate'], best_model['model'], best_res['epoch'], episode, params['is_a2c'])
                 save_performance_records(params['write_model_dir'], agt, performance_records)
-        
+
+        if params['is_a2c'] and (agt==15) and params['trained_model_path'] == None:
+            agent.predict_mode = True
+            simulation_res, states, rewards, indexes, actions = simulation_epoch(simulation_epoch_size)
+
+            performance_records['success_rate'][episode] = simulation_res['success_rate']
+            performance_records['ave_turns'][episode] = simulation_res['ave_turns']
+            performance_records['ave_reward'][episode] = simulation_res['ave_reward']
+
+            if simulation_res['success_rate'] >= best_res['success_rate']:
+                if simulation_res['success_rate'] >= success_rate_threshold: # threshold = 0.30
+                    agent.experience_replay_pool = []
+                    ## refill the experience replay with better episodes
+                    collect_dialogue_episodes(warm_start_epochs)
+
+            if simulation_res['success_rate'] > best_res['success_rate']:
+                best_model['model'] = {}
+                best_model['model']["actor_model"] = agent.actor_model
+                best_model['model']["critic_model"] = agent.critic_model
+                best_res['success_rate'] = simulation_res['success_rate']
+                best_res['ave_reward'] = simulation_res['ave_reward']
+                best_res['ave_turns'] = simulation_res['ave_turns']
+                best_res['epoch'] = episode
+
+            ## generate an episode and add to experience replay of the agent
+            collect_dialogue_episodes(1)
+            ## sample M episodes and train
+            batch = [random.choice(agent.experience_replay_pool) for i in xrange(batch_size)]
+            agent.train(batch)
+            agent.predict_mode = False
+            print ("Simulation success rate %s, Ave reward %s, Ave turns %s, Best success rate %s" % (
+            performance_records['success_rate'][episode], performance_records['ave_reward'][episode],
+            performance_records['ave_turns'][episode], best_res['success_rate']))
+            if episode % save_check_point == 0 and params[
+                'trained_model_path'] == None:  # save the model every 10 episodes
+                ## Todo : Acer combined model saving not implemented
+                save_model(params['write_model_dir'], agt, best_res['success_rate'], best_model['model'],
+                           best_res['epoch'], episode, params['is_a2c'])
+                save_performance_records(params['write_model_dir'], agt, performance_records)
 
         print("Progress: %s / %s, Success rate: %s / %s Avg reward: %.2f Avg turns: %.2f" % (episode+1, count, successes, episode+1, float(cumulative_reward)/(episode+1), float(cumulative_turns)/(episode+1)))
     print("Success rate: %s / %s Avg reward: %.2f Avg turns: %.2f" % (successes, count, float(cumulative_reward)/count, float(cumulative_turns)/count))
     status['successes'] += successes
     status['count'] += count
     
-    if agt == 9 or agt == 10 or agt == 11 or agt == 12 or agt==13 or agt==14 and params['trained_model_path'] == None:
+    if agt == 9 or agt == 10 or agt == 11 or agt == 12 or agt==13 or agt==14 or agt == 15 and params['trained_model_path'] == None:
         save_model(params['write_model_dir'], agt, float(successes)/count, best_model['model'], best_res['epoch'], count)
         save_performance_records(params['write_model_dir'], agt, performance_records)
 
