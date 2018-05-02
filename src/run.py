@@ -190,7 +190,19 @@ agent_params['actor_lr'] = params['actor_lr']
 agent_params['critic_lr'] = params['critic_lr']
 agent_params['expert_path'] = params['expert_path']
 agent_params['gan_critic_lr'] = params['gan_critic_lr']
+agent_params['discriminator_lr'] = params['discriminator_lr']
+agent_params['critw'] = params['critw']
 agent_params['n'] = params['n']
+agent_params['a2c_hidden_size']  =params['a2c_hidden_size']
+agent_params['batch_size'] = params['batch_size']
+agent_params['simulation_epoch_size'] = params['simulation_epoch_size']
+agent_params['warm_start'] = params['warm_start']
+agent_params['warm_start_epochs'] = params['warm_start_epochs']
+agent_params['target_sample_type'] = params['target_sample_type']
+agent_params['learning_phase'] = params['learning_phase']
+
+
+
 ## if there are additional agent parameters to be added for our implementation
 
 if agt == 0:
@@ -208,20 +220,20 @@ elif agt == 5:
 elif agt == 9:
     agent = AgentDQN(movie_kb, act_set, slot_set, agent_params)
 elif agt == 10:
-    agent = AgentDQNKeras(movie_kb, act_set, slot_set, params)
+    agent = AgentDQNKeras(movie_kb, act_set, slot_set, agent_params)
 elif agt == 11:
-    agent = AgentDQNBoltzmann(movie_kb, act_set, slot_set, params)
+    agent = AgentDQNBoltzmann(movie_kb, act_set, slot_set, agent_params)
 elif agt == 12:
-    agent = AgentBBQN(movie_kb, act_set, slot_set, params)
+    agent = AgentBBQN(movie_kb, act_set, slot_set, agent_params)
    
 if params['is_a2c']:
     print("Training for A2C Now...")
     if agt == 13:
-        agent = AgentA2C(movie_kb, act_set, slot_set, params)
+        agent = AgentA2C(movie_kb, act_set, slot_set, agent_params)
     elif agt == 14:
-        agent = AgentAdverserialA2C(movie_kb, act_set, slot_set, params)
+        agent = AgentAdverserialA2C(movie_kb, act_set, slot_set, agent_params)
     elif agt == 15:
-        agent = AgentSharedA2C(movie_kb, act_set, slot_set, params)
+        agent = AgentSharedA2C(movie_kb, act_set, slot_set, agent_params)
     elif agt == 16:
         agent = AgentACER(movie_kb, act_set, slot_set, params)
 
@@ -235,6 +247,7 @@ else:
 #   Parameters for User Simulators
 ################################################################################
 usersim_params = {}
+
 usersim_params['max_turn'] = max_turn
 usersim_params['slot_err_probability'] = params['slot_err_prob']
 usersim_params['slot_err_mode'] = params['slot_err_mode']

@@ -102,7 +102,7 @@ class AgentSharedA2C(Agent):
                                           distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost),
                                           name='act_output')
         
-        critic_model = Dense(1, activation='relu', kernel_initializer=VarianceScaling(mode='fan_avg',
+        critic_model = Dense(1, activation='linear', kernel_initializer=VarianceScaling(mode='fan_avg',
                                           distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost),
                                           name='crit_output')
         
@@ -258,7 +258,7 @@ class AgentSharedA2C(Agent):
     def train(self, states, actions, rewards, indexes, gamma=0.99):
         states = [self.prepare_state_representation(x) for x in states]
         ## range for rewards in dialogue is reduced
-        rewards = [r/20 for r in rewards]
+        # rewards = [r*40 for r in rewards]
         advantage, gains = self.get_advantage(states, rewards)
         advantage = advantage.reshape(-1, 1)
         actions = np.asarray(actions)

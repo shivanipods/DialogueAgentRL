@@ -120,7 +120,7 @@ class AgentA2C(Agent):
         fc2 = Dense(50, activation='relu',
                     kernel_initializer=VarianceScaling(mode='fan_avg',
                                                        distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
-        fc3 = Dense(1, activation='relu',
+        fc3 = Dense(1, activation='linear',
                     kernel_initializer=VarianceScaling(mode='fan_avg',
                                                        distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
         model.add(fc1)
@@ -271,7 +271,6 @@ class AgentA2C(Agent):
     def train(self, states, actions, rewards, indexes, gamma=0.99):
         states = [self.prepare_state_representation(x) for x in states]
         ## range for rewards in dialogue is reduced
-        rewards = [r/20 for r in rewards]
         advantage, gains = self.get_advantage(states, rewards)
         advantage = advantage.reshape(-1, 1)
         actions = np.asarray(actions)
