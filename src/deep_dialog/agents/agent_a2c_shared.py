@@ -71,7 +71,7 @@ class AgentSharedA2C(Agent):
         self.max_turn = params['max_turn'] + 4
         self.state_dimension = 2 * self.act_cardinality + 7 * self.slot_cardinality + 3 + self.max_turn
         self.build_shared_model()
-        self.n = params.get('n', 50)
+        self.n = params.get('n', 5)
 
         ## load a model if present
         if params['trained_model_path'] != None:
@@ -88,7 +88,7 @@ class AgentSharedA2C(Agent):
     def build_shared_model(self):
         print ('Building Shared A2C Architechture....')
         model = Sequential()
-        fc1 = Dense(self.hidden_size, input_shape=(self.state_dimension,), activation='relu',
+        fc1 = Dense(130, input_shape=(self.state_dimension,), activation='relu',
                     kernel_initializer=VarianceScaling(mode='fan_avg',
                                                        distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
         fc2 = Dense(self.hidden_size, activation='relu',

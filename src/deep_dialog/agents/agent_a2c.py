@@ -72,7 +72,7 @@ class AgentA2C(Agent):
         self.state_dimension = 2 * self.act_cardinality + 7 * self.slot_cardinality + 3 + self.max_turn
         self.build_actor_model()
         self.build_critic_model()
-        self.n = params.get('n', 50)
+        self.n = params.get('n', 5)
 
         ## load a model if present
         if params['trained_model_path'] != None:
@@ -97,7 +97,7 @@ class AgentA2C(Agent):
 
     def build_actor_model(self):
         model = Sequential()
-        fc1 = Dense(50, input_shape=(self.state_dimension,), activation='relu',
+        fc1 = Dense(130, input_shape=(self.state_dimension,), activation='relu',
                     kernel_initializer=VarianceScaling(mode='fan_avg',
                                                        distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
         fc2 = Dense(50, activation='relu',
@@ -114,7 +114,7 @@ class AgentA2C(Agent):
 
     def build_critic_model(self):
         model = Sequential()
-        fc1 = Dense(50, input_shape=(self.state_dimension,), activation='relu',
+        fc1 = Dense(130, input_shape=(self.state_dimension,), activation='relu',
                     kernel_initializer=VarianceScaling(mode='fan_avg',
                                                        distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
         fc2 = Dense(50, activation='relu',

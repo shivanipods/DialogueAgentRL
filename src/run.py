@@ -190,6 +190,7 @@ agent_params['actor_lr'] = params['actor_lr']
 agent_params['critic_lr'] = params['critic_lr']
 agent_params['expert_path'] = params['expert_path']
 agent_params['gan_critic_lr'] = params['gan_critic_lr']
+agent_params['n'] = params['n']
 ## if there are additional agent parameters to be added for our implementation
 
 if agt == 0:
@@ -207,22 +208,22 @@ elif agt == 5:
 elif agt == 9:
     agent = AgentDQN(movie_kb, act_set, slot_set, agent_params)
 elif agt == 10:
-    agent = AgentDQNKeras(movie_kb, act_set, slot_set, agent_params)
+    agent = AgentDQNKeras(movie_kb, act_set, slot_set, params)
 elif agt == 11:
-    agent = AgentDQNBoltzmann(movie_kb, act_set, slot_set, agent_params)
+    agent = AgentDQNBoltzmann(movie_kb, act_set, slot_set, params)
 elif agt == 12:
-    agent = AgentBBQN(movie_kb, act_set, slot_set, agent_params)
+    agent = AgentBBQN(movie_kb, act_set, slot_set, params)
    
 if params['is_a2c']:
     print("Training for A2C Now...")
     if agt == 13:
-        agent = AgentA2C(movie_kb, act_set, slot_set, agent_params)
+        agent = AgentA2C(movie_kb, act_set, slot_set, params)
     elif agt == 14:
-        agent = AgentAdverserialA2C(movie_kb, act_set, slot_set, agent_params)
+        agent = AgentAdverserialA2C(movie_kb, act_set, slot_set, params)
     elif agt == 15:
-        agent = AgentSharedA2C(movie_kb, act_set, slot_set, agent_params)
+        agent = AgentSharedA2C(movie_kb, act_set, slot_set, params)
     elif agt == 16:
-        agent = AgentACER(movie_kb, act_set, slot_set, agent_params)
+        agent = AgentACER(movie_kb, act_set, slot_set, params)
 
 ################################################################################
 #    Add your agent here
