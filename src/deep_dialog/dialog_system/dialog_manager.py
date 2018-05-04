@@ -13,7 +13,7 @@ class DialogManager:
     """ A dialog manager to mediate the interaction between an agent and a customer """
     
     def __init__(self, agent, user, act_set, slot_set, movie_dictionary, 
-            is_a2c=False):
+            is_a2c=False, reward_function_idx=0):
         self.agent = agent
         self.user = user
         self.act_set = act_set
@@ -23,7 +23,7 @@ class DialogManager:
         self.reward = 0
         self.episode_over = False
         self.is_a2c = is_a2c
-
+        self.reward_function_use = ['normal', 'a2c', 'paper'][reward_function_idx]
     def initialize_episode(self):
         """ Refresh state for new dialog """
         self.reward = 0
@@ -57,10 +57,12 @@ class DialogManager:
         ########################################################################
         self.sys_action = self.state_tracker.dialog_history_dictionaries()[-1]
         self.user_action, self.episode_over, dialog_status = self.user.next(self.sys_action)
-        if self.is_a2c:
+        if self.reward_function_use == 'normal':
             self.reward = self.reward_function(dialog_status)
-        else:
-            self.reward = self.reward_function(dialog_status)
+        elif self.reward_function_use == 'a2c':
+            self.reward = self.reward_function_a2c(dialog_status)
+        elif self.reward_function_use == 'paper':
+            self.reward = self.reward_function_paper(dialog_status)
 
         ########################################################################
         #   Update state tracker with latest user action
@@ -93,10 +95,12 @@ class DialogManager:
         ########################################################################
         self.sys_action = self.state_tracker.dialog_history_dictionaries()[-1]
         self.user_action, self.episode_over, dialog_status = self.user.next(self.sys_action)
-        if self.is_a2c:
+        if self.reward_function_use == 'normal':
             self.reward = self.reward_function(dialog_status)
-        else:
-            self.reward = self.reward_function(dialog_status)
+        elif self.reward_function_use == 'a2c':
+            self.reward = self.reward_function_a2c(dialog_status)
+        elif self.reward_function_use == 'paper':
+            self.reward = self.reward_function_paper(dialog_status)
         
         ########################################################################
         #   Update state tracker with latest user action
@@ -134,6 +138,20 @@ class DialogManager:
             reward = -0.025
         return reward
     
+    def reward_function_paper(self, dialog_status):
+        """ Reward Function 1: a reward function based on the dialog_status """
+        if dialog_status == dialog_config.FAILED_DIALOG:
+            reward = -self.user.max_turn #10
+            if self.is_a2c:
+                reward *= 0.05
+        elif dialog_status == dialog_config.SUCCESS_DIALOG:
+            if self.a2c:
+                reward = 1 - 0.05 * self.user.max_turn
+            else:
+                reward = 2*self.user.max_turn #20
+        else:
+            reward = -1
+        return reward    
     def reward_function_without_penalty(self, dialog_status):
         """ Reward Function 2: a reward function without penalty on per turn and failure dialog """
         if dialog_status == dialog_config.FAILED_DIALOG:
