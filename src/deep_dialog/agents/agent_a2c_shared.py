@@ -92,7 +92,7 @@ class AgentSharedA2C(Agent):
     def build_shared_model(self):
         print ('Building Shared A2C Architechture....')
         model = Sequential()
-        fc1 = Dense(130, input_shape=(self.state_dimension,), activation='relu',
+        fc1 = Dense(80, input_shape=(self.state_dimension,), activation='relu',
                     kernel_initializer=VarianceScaling(mode='fan_avg',
                                                        distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
         fc2 = Dense(self.hidden_size, activation='relu',
@@ -100,7 +100,7 @@ class AgentSharedA2C(Agent):
                                                        distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
         
         model.add(fc1)
-        model.add(fc2)
+        # model.add(fc2)
         
         actor_model = Dense(self.num_actions, activation='softmax',kernel_initializer=VarianceScaling(mode='fan_avg',
                                           distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost),
@@ -292,8 +292,6 @@ class AgentSharedA2C(Agent):
         actions = np.asarray(actions)
 
         # L(\theta) from the handout
-
-
         targets = advantage  # * actions
         act_target = np.zeros((len(states), self.num_actions))
         act_target[np.arange(len(states)), np.array(indexes)] \

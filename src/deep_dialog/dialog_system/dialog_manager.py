@@ -57,7 +57,10 @@ class DialogManager:
         ########################################################################
         self.sys_action = self.state_tracker.dialog_history_dictionaries()[-1]
         self.user_action, self.episode_over, dialog_status = self.user.next(self.sys_action)
-        self.reward = self.reward_function(dialog_status)
+        if self.is_a2c:
+            self.reward = self.reward_function(dialog_status)
+        else:
+            self.reward = self.reward_function(dialog_status)
 
         ########################################################################
         #   Update state tracker with latest user action
@@ -90,7 +93,10 @@ class DialogManager:
         ########################################################################
         self.sys_action = self.state_tracker.dialog_history_dictionaries()[-1]
         self.user_action, self.episode_over, dialog_status = self.user.next(self.sys_action)
-        self.reward = self.reward_function(dialog_status)
+        if self.is_a2c:
+            self.reward = self.reward_function(dialog_status)
+        else:
+            self.reward = self.reward_function(dialog_status)
         
         ########################################################################
         #   Update state tracker with latest user action
@@ -113,7 +119,7 @@ class DialogManager:
         if dialog_status == dialog_config.FAILED_DIALOG:
             reward = -self.user.max_turn #10
         elif dialog_status == dialog_config.SUCCESS_DIALOG:
-            reward = 2*self.user.max_turn #20
+            reward = 3*self.user.max_turn #20
         else:
             reward = -1
         return reward

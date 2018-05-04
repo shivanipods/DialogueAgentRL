@@ -101,7 +101,7 @@ class AgentA2C(Agent):
 
     def build_actor_model(self):
         model = Sequential()
-        fc1 = Dense(130, input_shape=(self.state_dimension,), activation='relu',
+        fc1 = Dense(80, input_shape=(self.state_dimension,), activation='relu',
                     kernel_initializer=VarianceScaling(mode='fan_avg',
                                                        distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
         fc2 = Dense(50, activation='relu',
@@ -111,14 +111,14 @@ class AgentA2C(Agent):
                     kernel_initializer=VarianceScaling(mode='fan_avg',
                                                        distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
         model.add(fc1)
-        model.add(fc2)
+        # model.add(fc2)
         model.add(fc3)
         model.compile(loss='mse', optimizer=Adam(lr=self.actor_lr))
         self.actor_model = model
 
     def build_critic_model(self):
         model = Sequential()
-        fc1 = Dense(130, input_shape=(self.state_dimension,), activation='relu',
+        fc1 = Dense(80, input_shape=(self.state_dimension,), activation='relu',
                     kernel_initializer=VarianceScaling(mode='fan_avg',
                                                        distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
         fc2 = Dense(50, activation='relu',
@@ -128,7 +128,7 @@ class AgentA2C(Agent):
                     kernel_initializer=VarianceScaling(mode='fan_avg',
                                                        distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
         model.add(fc1)
-        model.add(fc2)
+        # model.add(fc2)
         model.add(fc3)
         model.compile(loss='mse', optimizer=Adam(lr=self.critic_lr))
         self.critic_model = model
@@ -318,7 +318,7 @@ class AgentA2C(Agent):
         rewards = np.asarray(rewards)
         tot_rewards = np.sum(rewards)
 
-        if update_counter % 5 == 0:
+        if update_counter % 1 == 0:
             actor_loss = self.actor_model.train_on_batch(states, act_target)
             print("Actor Loss:{0:4f}".format(actor_loss))
 
