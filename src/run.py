@@ -128,19 +128,19 @@ if __name__ == "__main__":
     parser.add_argument('--critw', dest='critw', default=2.0, type=float, help='critic loss weight')
 
     ## arguments for epsilon greedy policy
-    parser.add_argument("--eps_fixed", default=False)
-    parser.add_argument("--eps_strat", default="linear_decay")
-    parser.add_argument('--eps_start', default=0.3)
-    parser.add_argument('--eps_end', default=0)
-    parser.add_argument('--eps_decay', default=1e3)
+    parser.add_argument("--eps_fixed", action_store = True, default=False)
+    parser.add_argument("--eps_strat", type =str, default="linear_decay")
+    parser.add_argument('--eps_start', type=float, default=0.3)
+    parser.add_argument('--eps_end', type=float, default=0)
+    parser.add_argument('--eps_decay', type=float, default=1e3)
 
     ## arguments for ACER
-    parser.add_argument('--beta', default=0.99)
-    parser.add_argument('--clip', default=1)
+    parser.add_argument('--beta', type=float, default=0.99)
+    parser.add_argument('--clip', type=float, default=1)
 
     ## training specific hyperparams
-    parser.add_argument('--freeze', default=1)
-    parser.add_argument('--dropout', default=0.2)
+    parser.add_argument('--freeze', type=float, default=1)
+    parser.add_argument('--dropout', type=float, default=0.2)
 
 
     args = parser.parse_args()
