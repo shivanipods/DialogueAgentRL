@@ -13,7 +13,7 @@ import logging
 import keras
 from keras.initializers import VarianceScaling
 from keras.models import Sequential, Model
-from keras.layers import Dense, Input, Lambda
+from keras.layers import Dense, Input, Dropout
 from keras.optimizers import Adam
 from keras import regularizers
 import ipdb
@@ -64,8 +64,13 @@ class AgentA2C(Agent):
         self.eps_strat = params.get("eps_strat", "linear_decay")
         self.eps_start = params.get('eps_start', 0.3)
         self.eps_end = params.get('eps_end', 0)
-        self.eps_decay = params.get('eps_decay', 1e3)
+        self.eps_decay = params.get('eps_decay', 5e4) #stop exploration in 500 episodes with exponential decay
 
+        ## freezing actor
+        self.freeze = params.get('freeze', 5)
+
+        ## dropout
+        self.dropout = params.get('dropout', 0.2)
 
         self.hidden_size = params.get('dqn_hidden_size', 60)
         # gamma : discount factor
@@ -102,7 +107,7 @@ class AgentA2C(Agent):
 
     def build_actor_model(self):
         model = Sequential()
-        fc1 = Dense(80, input_shape=(self.state_dimension,), activation='relu',
+        fc1 = Dense(130, input_shape=(self.state_dimension,), activation='relu',
                     kernel_initializer=VarianceScaling(mode='fan_avg',
                                                        distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
         fc2 = Dense(50, activation='relu',
@@ -112,14 +117,16 @@ class AgentA2C(Agent):
                     kernel_initializer=VarianceScaling(mode='fan_avg',
                                                        distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
         model.add(fc1)
-        # model.add(fc2)
+        model.add(Dropout(self.dropout))
+        model.add(fc2)
+        model.add(Dropout(self.dropout))
         model.add(fc3)
         model.compile(loss='mse', optimizer=Adam(lr=self.actor_lr))
         self.actor_model = model
 
     def build_critic_model(self):
         model = Sequential()
-        fc1 = Dense(80, input_shape=(self.state_dimension,), activation='relu',
+        fc1 = Dense(130, input_shape=(self.state_dimension,), activation='relu',
                     kernel_initializer=VarianceScaling(mode='fan_avg',
                                                        distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
         fc2 = Dense(50, activation='relu',
@@ -129,7 +136,9 @@ class AgentA2C(Agent):
                     kernel_initializer=VarianceScaling(mode='fan_avg',
                                                        distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
         model.add(fc1)
-        # model.add(fc2)
+        model.add(Dropout(self.dropout))
+        model.add(fc2)
+        model.add(Dropout(self.dropout))
         model.add(fc3)
         model.compile(loss='mse', optimizer=Adam(lr=self.critic_lr))
         self.critic_model = model
@@ -328,7 +337,7 @@ class AgentA2C(Agent):
         states = [self.prepare_state_representation(x) for x in states]
         ## range for rewards in dialogue is reduced
         advantage, gains = self.get_advantage(states, rewards)
-        advantage1, gains1 = self.get_advantage1(states, rewards)
+        # advantage1, gains1 = self.get_advantage1(states, rewards)
         advantage = advantage.reshape(-1, 1)
         actions = np.asarray(actions)
 
@@ -343,7 +352,7 @@ class AgentA2C(Agent):
         rewards = np.asarray(rewards)
         tot_rewards = np.sum(rewards)
 
-        if update_counter % 1 == 0:
+        if update_counter % self.freeze == 0:
             actor_loss = self.actor_model.train_on_batch(states, act_target)
             print("Actor Loss:{0:4f}".format(actor_loss))
 
