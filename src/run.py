@@ -128,15 +128,19 @@ if __name__ == "__main__":
     parser.add_argument('--critw', dest='critw', default=2.0, type=float, help='critic loss weight')
 
     ## arguments for epsilon greedy policy
-    parser.add_argument("--eps_fixed", default=False)
-    parser.add_argument("--eps_strat", default="linear_decay")
-    parser.add_argument('--eps_start', default=0.3)
-    parser.add_argument('--eps_end', default=0)
-    parser.add_argument('--eps_decay', default=1e3)
+    parser.add_argument("--eps_fixed", action= "store_true", default=False)
+    parser.add_argument("--eps_strat", type =str, default="linear_decay")
+    parser.add_argument('--eps_start', type=float, default=0.3)
+    parser.add_argument('--eps_end', type=float, default=0)
+    parser.add_argument('--eps_decay', type=float, default=1e3)
 
     ## arguments for ACER
-    parser.add_argument('--beta', default=0.99)
-    parser.add_argument('--clip', default=1)
+    parser.add_argument('--beta', type=float, default=0.99)
+    parser.add_argument('--clip', type=float, default=1)
+
+    ## training specific hyperparams
+    parser.add_argument('--freeze', type=float, default=1)
+    parser.add_argument('--dropout', type=float, default=0.2)
 
 
     args = parser.parse_args()
@@ -213,9 +217,13 @@ agent_params['warm_start'] = params['warm_start']
 agent_params['warm_start_epochs'] = params['warm_start_epochs']
 agent_params['target_sample_type'] = params['target_sample_type']
 agent_params['learning_phase'] = params['learning_phase']
-
-
-
+agent_params['eps_fixed'] = params['eps_fixed']
+agent_params['eps_strat'] = params['eps_strat']
+agent_params['eps_start'] = params['eps_start']
+agent_params['eps_end'] = params['eps_end']
+agent_params['eps_decay'] = params['eps_decay']
+agent_params['freeze'] = params['freeze']
+agent_params['dropout'] = params['dropout']
 ## if there are additional agent parameters to be added for our implementation
 
 if agt == 0:
@@ -695,8 +703,6 @@ def run_episodes(count, status):
                 best_res['ave_turns'] = simulation_res['ave_turns']
                 best_res['epoch'] = episode
 
-            ## generate an episode and add to experience replay of the agent
-            ## after some number of episodes only train every two episodes
             collect_dialogue_episodes(1)
             batch = [random.choice(agent.experience_replay_pool) for i in xrange(batch_size)]
             agent.train(batch, episode+1)
@@ -732,7 +738,7 @@ def test_episodes(num_runs, status, is_a2c, agt):
     else:
         agent.actor_model = checkpoint['actor_model']
         agent.critic_model = checkpoint['critic_model']
-    num_episodes = 10000
+    num_episodes = 500
     average_success_rate = 0
     average_reward = 0
     average_turns = 0

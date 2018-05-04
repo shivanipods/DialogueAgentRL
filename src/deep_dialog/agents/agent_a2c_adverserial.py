@@ -141,7 +141,7 @@ class AgentAdverserialA2C(Agent):
 
 	def build_actor_model(self, actor_lr):
 		model = Sequential()
-		fc1 = Dense(80, input_shape=(self.state_dimension,),
+		fc1 = Dense(130, input_shape=(self.state_dimension,),
 			activation='relu',
 			kernel_initializer=VarianceScaling(mode='fan_avg',
 			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
@@ -152,24 +152,24 @@ class AgentAdverserialA2C(Agent):
 			kernel_initializer=VarianceScaling(mode='fan_avg',
 			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
 		model.add(fc1)
-		# model.add(fc2)
+		model.add(fc2)
 		model.add(fc3)
 		model.compile(loss='mse', optimizer=Adam(lr=self.actor_lr))
 		self.actor_model = model
 
 	def build_critic_model(self, critic_lr, is_adverserial = False):
 		model = Sequential()
-		fc1 = Dense(80, input_shape=(self.state_dimension,), activation='relu',
+		fc1 = Dense(130, input_shape=(self.state_dimension,), activation='relu',
 			kernel_initializer=VarianceScaling(mode='fan_avg',
 			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
 		fc2 = Dense(50, activation='relu',
 			kernel_initializer=VarianceScaling(mode='fan_avg',
 			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
-		fc3 = Dense(1, activation='relu',
+		fc3 = Dense(1, activation='linear',
 			kernel_initializer=VarianceScaling(mode='fan_avg',
 			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
 		model.add(fc1)
-		# model.add(fc2)
+		model.add(fc2)
 		model.add(fc3)
 		model.compile(loss='mse', optimizer=Adam(lr=self.critic_lr))
 		if is_adverserial:
@@ -189,7 +189,7 @@ class AgentAdverserialA2C(Agent):
 					kernel_initializer=VarianceScaling(mode='fan_avg',
 													   distribution='normal'))
 		model.add(fc1)
-		# model.add(fc2)
+		model.add(fc2)
 		model.add(fc3)
 		model.compile(optimizer=Adam(lr=self.discriminator_lr) , loss='binary_crossentropy', metrics=['accuracy'])
 		self.discriminator = model
