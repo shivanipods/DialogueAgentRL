@@ -145,7 +145,7 @@ class DialogManager:
             if self.is_a2c:
                 reward *= 0.05
         elif dialog_status == dialog_config.SUCCESS_DIALOG:
-            if self.a2c:
+            if self.is_a2c:
                 reward = 1 - 0.05 * self.user.max_turn
             else:
                 reward = 2*self.user.max_turn #20
