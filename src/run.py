@@ -126,6 +126,19 @@ if __name__ == "__main__":
     parser.add_argument('--n', dest='n', default=50, type=int, help='critics N')
     parser.add_argument("--is_a2c", dest='is_a2c', default=False, action="store_true", help='Train DQN or A2C')
     parser.add_argument('--critw', dest='critw', default=2.0, type=float, help='critic loss weight')
+
+    ## arguments for epsilon greedy policy
+    parser.add_argument("--eps_fixed", default=False)
+    parser.add_argument("--eps_strat", default="linear_decay")
+    parser.add_argument('--eps_start', default=0.3)
+    parser.add_argument('--eps_end', default=0)
+    parser.add_argument('--eps_decay', default=1e3)
+
+    ## arguments for ACER
+    parser.add_argument('--beta', default=0.99)
+    parser.add_argument('--clip', default=1)
+
+
     args = parser.parse_args()
     params = vars(args)
 
@@ -235,7 +248,7 @@ if params['is_a2c']:
     elif agt == 15:
         agent = AgentSharedA2C(movie_kb, act_set, slot_set, agent_params)
     elif agt == 16:
-        agent = AgentACER(movie_kb, act_set, slot_set, params)
+        agent = AgentACER(movie_kb, act_set, slot_set, agent_params)
 
 ################################################################################
 #    Add your agent here
@@ -347,7 +360,7 @@ def save_model(path, agt, success_rate, model_agent, best_epoch, cur_epoch, is_a
             print("Saved model to disk")
         except Exception, e:
             print('Error: Writing model fails: %s' % (filepath,))
-    if (agt==13 or agt == 14) and is_a2c:
+    if (agt == 13 or agt == 14) and is_a2c:
         try:
             actor_json = model_agent["actor_model"].to_json()
             with open(filepath + ".actor.json", "w") as json_file:
@@ -359,6 +372,14 @@ def save_model(path, agt, success_rate, model_agent, best_epoch, cur_epoch, is_a
             model_agent["critic_model"].save_weights(filepath + ".critic.h5")
         except:
             print('Error: Writing model fails: %s' % (filepath,))
+    if (agt == 16) and is_a2c:
+        try:
+            model_json = model_agent.to_json()
+            with open(filepath + ".actor.json", "w") as json_file:
+                json_file.write(model_json)
+            model_agent.save_weights(filepath + ".h5")
+        except:
+            print('Error: Writing model fails: %s' % (filepath,))
     ## TODO: Add support for adeversarial dqn (to save gan critic)
     checkpoint['params'] = params
     pickle.dump(checkpoint, open(filepath, "wb"))
@@ -366,7 +387,7 @@ def save_model(path, agt, success_rate, model_agent, best_epoch, cur_epoch, is_a
 
 def load_model(path, is_a2c = False):
     checkpoint = {}
-    if agt == 10 or agt == 11 or agt == 12 or agt == 15:
+    if agt == 10 or agt == 11 or agt == 12 or agt == 15 or agt == 16:
         try:
             json_file = open(path + '.json', 'r')
             loaded_model_json = json_file.read()
@@ -504,6 +525,29 @@ def warm_start_simulation():
     print ("Warm_Start %s epochs, success rate %s, ave reward %s, ave turns %s" % (episode+1, res['success_rate'], res['ave_reward'], res['ave_turns']))
     print ("Current experience replay buffer size %s" % (len(agent.experience_replay_pool)))
 
+
+def collect_rule_policy_episodes(episodes_to_collect = 10):
+    for episode in xrange(episodes_to_collect):
+        dialog_manager.initialize_episode()
+        episode_over = False
+        episode_reward = 0
+        states = []
+        actions = []
+        rewards = []
+        action_probs = []
+        while (not episode_over):
+            state = agent.prepare_state_representation(dialog_manager.state_tracker.get_state_for_agent())
+            (episode_over, reward), action, action_prob = dialog_manager.next_turn()
+            episode_reward += reward
+            states.append(state)
+            actions.append(action)
+            rewards.append(reward)
+            action_probs.append(action_prob)
+        agent.register_experience_replay_dialogue(states, actions, action_probs, rewards)
+        print("Collected episode {0}".format(episode))
+    print("Size of experience replay buffer: {0}".format(len(agent.experience_replay_pool)))
+    agent.warm_start = 2
+
 def collect_dialogue_episodes(episodes_to_collect = 10):
     for episode in xrange(episodes_to_collect):
         dialog_manager.initialize_episode()
@@ -512,6 +556,7 @@ def collect_dialogue_episodes(episodes_to_collect = 10):
         states = []
         actions = []
         rewards = []
+        action_probs = []
         while(not episode_over):
             state = agent.prepare_state_representation(dialog_manager.state_tracker.get_state_for_agent())
             (episode_over, reward), action, action_prob = dialog_manager.next_turn()
@@ -519,10 +564,10 @@ def collect_dialogue_episodes(episodes_to_collect = 10):
             states.append(state)
             actions.append(action)
             rewards.append(reward)
-        agent.register_experience_replay_dialogue(states, actions, rewards)
-
-
-
+            action_probs.append(action_prob)
+        agent.register_experience_replay_dialogue(states, actions, action_probs, rewards)
+        print("Collected episode {0}".format(episode))
+    print("Size of experience replay buffer: {0}".format(len(agent.experience_replay_pool)))
 
 
 def run_episodes(count, status):
@@ -535,9 +580,12 @@ def run_episodes(count, status):
         warm_start_simulation()
         print ('warm_start finished, start RL training ...')
 
-    if agt == 15 and params['trained_model_path'] == None:
+    if agt == 16 and params['trained_model_path'] == None:
         print("filling experience replay with dialogue episodes")
-        collect_dialogue_episodes(warm_start_epochs)
+        if warm_start == 1:
+            collect_rule_policy_episodes(warm_start_epochs)
+        else:
+            collect_dialogue_episodes(warm_start_epochs)
         print("filled up experience replay with deialogue episodes")
 
     
@@ -617,7 +665,7 @@ def run_episodes(count, status):
                 best_res['epoch'] = episode
                 
             #agent.clone_dqn = copy.deepcopy(agent.dqn)
-            agent.train(states, actions, rewards, indexes)
+            agent.train(states, actions, rewards, indexes, episode+1)
             agent.predict_mode = False
             print ("Simulation success rate %s, Ave reward %s, Ave turns %s, Best success rate %s" % (performance_records['success_rate'][episode], performance_records['ave_reward'][episode], performance_records['ave_turns'][episode], best_res['success_rate']))
             if episode % save_check_point == 0 and params['trained_model_path'] == None: # save the model every 10 episodes
@@ -626,6 +674,8 @@ def run_episodes(count, status):
 
         if params['is_a2c'] and (agt==16) and params['trained_model_path'] == None:
             agent.predict_mode = True
+            ## evaluate the current performance
+            ## check if the experience buffer isnt filled in this step
             simulation_res, states, rewards, indexes, actions = simulation_epoch(simulation_epoch_size)
 
             performance_records['success_rate'][episode] = simulation_res['success_rate']
@@ -635,23 +685,21 @@ def run_episodes(count, status):
             if simulation_res['success_rate'] >= best_res['success_rate']:
                 if simulation_res['success_rate'] >= success_rate_threshold: # threshold = 0.30
                     agent.experience_replay_pool = []
-                    ## refill the experience replay with better episodes
+                    ## refill the experience replay with better episodes (1000 episodes)
                     collect_dialogue_episodes(warm_start_epochs)
 
             if simulation_res['success_rate'] > best_res['success_rate']:
-                best_model['model'] = {}
-                best_model['model']["actor_model"] = agent.actor_model
-                best_model['model']["critic_model"] = agent.critic_model
+                best_model['model'] = agent.ac_model
                 best_res['success_rate'] = simulation_res['success_rate']
                 best_res['ave_reward'] = simulation_res['ave_reward']
                 best_res['ave_turns'] = simulation_res['ave_turns']
                 best_res['epoch'] = episode
 
             ## generate an episode and add to experience replay of the agent
+            ## after some number of episodes only train every two episodes
             collect_dialogue_episodes(1)
-            ## sample M episodes and train
             batch = [random.choice(agent.experience_replay_pool) for i in xrange(batch_size)]
-            agent.train(batch)
+            agent.train(batch, episode+1)
             agent.predict_mode = False
             print ("Simulation success rate %s, Ave reward %s, Ave turns %s, Best success rate %s" % (
             performance_records['success_rate'][episode], performance_records['ave_reward'][episode],

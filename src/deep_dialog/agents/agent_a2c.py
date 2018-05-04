@@ -58,9 +58,13 @@ class AgentA2C(Agent):
         self.reg_cost = self.params.get('reg_cost', 1e-3)
         self.agent_act_level = params['agent_act_level']
 
-        # experience replay
-        # self.experience_replay_pool_size = params.get('experience_replay_pool_size', 1000)
-        # self.experience_replay_pool = [] #Replay_Memory(self.experience_replay_pool_size)
+        ## epsilon parameters
+        self.eps_fixed = params.get("eps_fixed", False)
+        self.eps_strat = params.get("eps_start", "linear_decay")
+        self.eps_start = params.get('eps_start', 0.3)
+        self.eps_end = params.get('eps_end', 0)
+        self.eps_decay = params.get('eps_decay', 1e3)
+
 
         self.hidden_size = params.get('dqn_hidden_size', 60)
         # gamma : discount factor
@@ -225,6 +229,18 @@ class AgentA2C(Agent):
         self.final_representation = np.squeeze(self.final_representation)
         return self.final_representation
 
+    def get_epsilon(self, update_counter):
+        if self.eps_strat == 'linear_decay':
+            eps_threshold = self.eps_start + (self.eps_end - self.eps_start) * min((update_counter / self.eps_decay), 1)
+        elif self.eps_strat == 'exp_decay':
+            eps_decay = self.eps_decay / 100
+            eps_threshold = self.eps_end + (self.eps_start - self.eps_end) * math.exp(-1. * update_counter / eps_decay)
+        elif self.eps_strat == 'log_decay':
+            # eps_threshold = eps_end + (eps_start - eps_end)
+            # max(self.epsilon_min, min(self.epsilon, 1.0 - math.log10((t + 1) * self.epsilon_decay)))
+            raise NotImplementedError()
+        return eps_threshold
+
     def state_to_action(self, state):
         """ A2C: Input state, output action """
         ## Dialogue manager calls this to fill the experience buffer ##
@@ -232,7 +248,16 @@ class AgentA2C(Agent):
         representation = np.expand_dims(np.asarray(representation), axis=0)
         self.action = self.actor_model.predict(representation)
         self.action = self.action.squeeze(0)
-        idx = np.random.choice(self.num_actions, 1, p=self.action)[0]
+
+        if self.eps_fixed == True:
+            idx = np.random.choice(self.num_actions, 1, p=self.action)[0]
+        else:
+            # epsilon greedy with the epsilon declining  from 0.95 to 0
+            if random.random() <= self.epsilon:
+                idx = random.randint(0, self.num_actions - 1)
+            else:
+                idx = np.argmax(self.action)
+
         act_slot_response = copy.deepcopy(
             self.feasible_actions[idx])
         return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}, idx, self.action[idx]
@@ -268,7 +293,14 @@ class AgentA2C(Agent):
                 [states[t]]))[0][0]
         return advantage, gain
 
-    def train(self, states, actions, rewards, indexes, gamma=0.99):
+    ## things to try:
+    ## replace get advantage from a+b code
+    ## try epsilon greedy in the beginning, freeze actor for a few episodes
+
+    def train(self, states, actions, rewards, indexes, update_counter, gamma=0.99):
+        self.epsilon = self.get_epsilon(update_counter)
+        print("Epsilon: {0}".format(self.epsilon))
+
         states = [self.prepare_state_representation(x) for x in states]
         ## range for rewards in dialogue is reduced
         advantage, gains = self.get_advantage(states, rewards)
@@ -286,8 +318,13 @@ class AgentA2C(Agent):
         rewards = np.asarray(rewards)
         tot_rewards = np.sum(rewards)
 
-        self.actor_model.train_on_batch(states, act_target)
-        self.critic_model.train_on_batch(states, gains)
+        if update_counter % 5 == 0:
+            actor_loss = self.actor_model.train_on_batch(states, act_target)
+            print("Actor Loss:{0:4f}".format(actor_loss))
+
+        critic_loss = self.critic_model.train_on_batch(states, gains)
+        print("Critic Loss:{0:4f}".format(critic_loss))
+
         return tot_rewards
 
     def evaluate(self, env, episode, num_episodes=100, render=False):

@@ -21,6 +21,7 @@ import ipdb
 from constants import *
 import random
 import gym
+import math
 
 import matplotlib
 
@@ -73,7 +74,15 @@ class AgentACER(Agent):
         self.gamma = params.get('gamma', 0.99)
         self.clip = params.get('clip', 1)
         self.beta = params.get('beta', 0.99)
-        self.lrate = params.get('lrate',  0.001)
+        self.lrate = params.get('lrate',  0.0005)
+
+        ## epsilon parameters
+        self.eps_fixed = params.get("eps_fixed", False)
+        self.eps_strat = params.get("eps_start", "linear_decay")
+        self.eps_start = params.get('eps_start', 0.3)
+        self.eps_end = params.get('eps_end', 0)
+        self.eps_decay = params.get('eps_decay', 1e3)
+
 
         ## warm start:
         self.warm_start = params.get('warm_start', 0)
@@ -104,6 +113,19 @@ class AgentACER(Agent):
             self.actor_model.save_weights(name)
         else:
             self.critic_model.save_weights(name)
+
+    def get_epsilon(self, update_counter):
+        if self.eps_strat == 'linear_decay':
+            eps_threshold = self.eps_start + (self.eps_end - self.eps_start) * min((update_counter / self.eps_decay), 1)
+        elif self.eps_strat == 'exp_decay':
+            eps_decay = self.eps_decay / 100
+            eps_threshold = self.eps_end + (self.eps_start - self.eps_end) * math.exp(-1. * update_counter / eps_decay)
+        elif self.eps_strat == 'log_decay':
+            # eps_threshold = eps_end + (eps_start - eps_end)
+            # max(self.epsilon_min, min(self.epsilon, 1.0 - math.log10((t + 1) * self.epsilon_decay)))
+            raise NotImplementedError()
+        return eps_threshold
+
 
     def build_actor_model(self):
         model = Sequential()
@@ -153,10 +175,10 @@ class AgentACER(Agent):
         shared_model.add(fc2)
         self.actor_model = Dense(self.num_actions, activation='softmax',
                     kernel_initializer=VarianceScaling(mode='fan_avg',
-                                                       distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
+                                                       distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost), name='act_output')
         self.critic_model = Dense(self.num_actions, activation='linear',
                     kernel_initializer=VarianceScaling(mode='fan_avg',
-                                                       distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
+                                                       distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost), name='crit_output')
 
         state_input = keras.layers.Input(shape=(self.state_dimension,), name='state_input')
         shared_output = shared_model(state_input)
@@ -165,11 +187,10 @@ class AgentACER(Agent):
 
         model = keras.models.Model(inputs=state_input, outputs=[actor_output, critic_output])
         optimizer_ = Adam(lr=self.lrate)
-        self.model.compile(optimizer=optimizer_,
+        model.compile(optimizer=optimizer_,
                            loss={'act_output': 'categorical_crossentropy', 'crit_output': 'mean_squared_error'},
-                           loss_weights={'act_output': 0.5, 'crit_output': 0.5})
+                           loss_weights={'act_output': 1, 'crit_output': 1})
         self.ac_model = model
-
 
     def initialize_episode(self):
         """ Initialize a new episode. This function is called every time a new episode is run. """
@@ -267,29 +288,34 @@ class AgentACER(Agent):
         self.final_representation = np.squeeze(self.final_representation)
         return self.final_representation
 
-    def register_experience_replay_dialogue(self, states, actions, rewards):
+    def register_experience_replay_dialogue(self, states, actions, action_probs, rewards):
         ## no check for predict mode and warms_start parameters
         ## no q values beings stored
-        training_example = (states, actions, rewards)
+        training_example = (states, actions, action_probs, rewards)
+        if len(self.experience_replay_pool) == self.experience_replay_pool_size:
+            ## deque the least recent one
+            self.experience_replay_pool.pop(0)
         self.experience_replay_pool.append(training_example)
 
-    def state_to_action(self, state):
-        """ A2C: Input state, output action """
-        ## Dialogue manager calls this to fill the experience buffer ##
-        representation = self.prepare_state_representation(state)
-        representation = np.expand_dims(np.asarray(representation), axis=0)
-        self.action, _ = self.model.predict(representation)
-        self.action = self.action.squeeze(0)
-        # epsilon greedy
-        if random.random() < self.epsilon:
-            idx = random.randint(0, self.num_actions - 1)
-        else:
-            idx = np.argmax(self.action)
-        ## multinomial distrbution
-        # idx = np.random.choice(self.num_actions, 1, p=self.action)[0]
-        act_slot_response = copy.deepcopy(
-            self.feasible_actions[idx])
-        return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}, idx, self.action[idx]
+    def rule_policy(self):
+        """ Rule Policy """
+
+        if self.current_slot_id < len(self.request_set):
+            slot = self.request_set[self.current_slot_id]
+            self.current_slot_id += 1
+
+            act_slot_response = {}
+            act_slot_response['diaact'] = "request"
+            act_slot_response['inform_slots'] = {}
+            act_slot_response['request_slots'] = {slot: "UNK"}
+        elif self.phase == 0:
+            act_slot_response = {'diaact': "inform", 'inform_slots': {'taskcomplete': "PLACEHOLDER"},
+                                 'request_slots': {}}
+            self.phase += 1
+        elif self.phase == 1:
+            act_slot_response = {'diaact': "thanks", 'inform_slots': {}, 'request_slots': {}}
+
+        return self.action_index(act_slot_response)
 
     def action_index(self, act_slot_response):
         """ Return the index of action """
@@ -301,91 +327,120 @@ class AgentACER(Agent):
         raise Exception("action index not found")
         return None
 
+    def state_to_action(self, state):
+        """ A2C: Input state, output action """
+        ## Dialogue manager calls this to fill the experience buffer ##
+        representation = self.prepare_state_representation(state)
+        representation = np.expand_dims(np.asarray(representation), axis=0)
+        self.action, _ = self.ac_model.predict(representation)
+        self.action = self.action.squeeze(0)
 
-    def train(self, batch, gamma=0.99):
-        # states = [self.prepare_state_representation(x) for x in states]
-        # ## range for rewards in dialogue is reduced
-        # rewards = [r/20 for r in rewards]
-        # advantage, gains = self.get_advantage(states, rewards)
-        # advantage = advantage.reshape(-1, 1)
-        # actions = np.asarray(actions)
-		#
-        # targets = advantage  # * actions
-        # act_target = np.zeros((len(states), self.num_actions))
-        # act_target[np.arange(len(states)), np.array(indexes)] \
-        #     = targets.squeeze(1)
-        # states = np.asarray(states)
-        # rewards = np.asarray(rewards)
-        # tot_rewards = np.sum(rewards)
-		#
-        # self.actor_model.train_on_batch(states, act_target)
-        # self.critic_model.train_on_batch(states, gains)
-        # return tot_rewards
+        if self.warm_start == 1:
+            ## if in training mode(not prediction) fill until you cant anymore
+            idx  = self.rule_policy()
+            act_slot_response = copy.deepcopy(
+                self.feasible_actions[idx])
+            return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}, idx, self.action[idx]
+        if self.eps_fixed == True:
+            idx = np.random.choice(self.num_actions, 1, p=self.action)[0]
+        else:
+            # epsilon greedy with the epsilon declining  from 0.95 to 0
+            if random.random() <= self.epsilon:
+                idx = random.randint(0, self.num_actions - 1)
+            else:
+                idx = np.argmax(self.action)
+        ## multinomial distrbution
+        # idx = np.random.choice(self.num_actions, 1, p=self.action)[0]
+        act_slot_response = copy.deepcopy(
+            self.feasible_actions[idx])
+        return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}, idx, self.action[idx]
 
+
+    def train_batch(self, batch, batch_size):
+        eps = 1e-6
+        states = batch.states
+        actions = batch.actions
+        action_probs = batch.action_probs
+        rewards = batch.rewards
+
+
+    def train(self, batch, update_counter, gamma=0.99):
         ## data structures to collect things in batch for training
+
+        ## decay epsilon for the next batch
+        self.epsilon = self.get_epsilon(update_counter)
+        print("Epsilon: {0}".format(self.epsilon))
+
+        eps = 1e-6
         batch_states = []
         batch_advantages = []
         batch_gains = []
+        batch_actions = []
+        total_rewards = 0
+
         for dialogue in batch:
             states = dialogue[0]
             actions = dialogue[1]
-            rewards = dialogue[2]
-            ## check correctness of this initialization
+            action_probs = dialogue[2]
+            rewards = dialogue[3]
+            total_rewards += np.sum(rewards)
+
             q_ret = 0
-            advantages = np.zeros(len(rewards))
+            advantages = np.zeros(len(rewards)) ## zero everywhere except where the actions actually took place
             values = np.zeros(len(rewards))
             importances = np.zeros(len(rewards))
-            gains = np.zeros(len(values))
+            gains = np.zeros(len(rewards)) ## recompute q-function for same state representation and replace action values with gains
+
             for t in reversed(range(len(rewards) - 1)):
                 state_representation = np.expand_dims(np.asarray(states[t]), axis=0)
-                cloned_actor_values,_ = self.ac_model_clone(state_representation)
-                actor_values, q_values = self.ac_model(state_representation)
-                importance = actor_values[actions[t]]/cloned_actor_values[actions[t]]
+                actor_values, q_values = self.ac_model.predict(state_representation)
+
+                # importance ratio
+                actor_values = actor_values.squeeze(0)
+                importance = actor_values[actions[t]]/(action_probs[t] + eps)
                 if np.isnan(importance):
                     importance = 1
-                importances[t] = np.min(self.clip, importance)
+                importances[t] = np.minimum(self.clip, importance)
+
+                # value function
                 values[t] = np.sum(actor_values * q_values)
+
                 q_ret = rewards[t] + self.gamma*q_ret
-                advantages[t] = q_ret - values[t]
+                advantages[t] = (q_ret - values[t])*importances[t]
+
                 gains[t] = q_ret
+
                 # advantages are the targets for cross entropy for training actor
                 # Q_ret currently computed is the correct q value for given state
-                q_ret = importances[t]*(q_ret - q_values[actions[t]]) + values[t]
+                q_ret = importances[t]*(q_ret - q_values.squeeze(0)[actions[t]]) + values[t]
+
             batch_states.extend(states)
             batch_advantages.extend(advantages)
             batch_gains.extend(gains)
+            batch_actions.extend(actions)
+
+        # train on batch
+        batch_size = len(batch_states)
         batch_states = np.asarray(batch_states)
-        act_targets = np.asarray(batch_advantages)
-        crit_targets = np.asarray(batch_gains)
-        metric, act_loss, crit_loss = self.model.train_on_batch(states, {'act_output': act_targets,
+        act_targets = np.zeros((batch_size, self.num_actions))
+        act_targets[np.arange(batch_size), np.array(batch_actions)] = batch_advantages
+
+        ## arrays*43 with the actions filled out
+        _,crit_targets = self.ac_model.predict(batch_states)
+        crit_targets[np.arange(batch_size), np.array(batch_actions)] = batch_gains
+
+        metric, act_loss, crit_loss = self.ac_model.train_on_batch(batch_states, {'act_output': act_targets,
                                                                          'crit_output': crit_targets})
 
         ## interpolate the wights of the clone and actual model
-        self.ac_model_clone.set_weights((1-self.beta)*self.ac_model.get_weights() +
-                                        self.beta*self.ac_model_clone.get_weights())
+        self.ac_model_clone.set_weights([(1-self.beta)*w for w in self.ac_model.get_weights()] +
+                                        [self.beta*w for w in self.ac_model_clone.get_weights()])
 
+        ## print loss
+        print("Actor Loss: {0:4f}".format(act_loss))
+        print("Critic Loss: {0:4f}".format(crit_loss))
 
-
-    def get_advantage(self, states, rewards):
-        T = len(rewards)
-        v_end = np.zeros(T)
-        gain = np.zeros(T)
-        advantage = np.zeros(T)
-        # states = [self.prepare_state_representation(x) for x in states]
-        for t in reversed(range(len(rewards) - 1)):
-            if t + self.n >= T:
-                v_end[t] = 0
-            else:
-                v_end[t] = self.critic_model.predict(
-                    np.asarray([states[t + self.n]]))[0][0]
-            gain[t] = self.gamma ** self.n * v_end[t] + \
-                      sum([(self.gamma ** k) * rewards[t + k] \
-                               if t + k < T \
-                               else self.gamma ** k * 0 \
-                           for k in range(self.n)])
-            advantage[t] = gain[t] - self.critic_model.predict(np.asarray(
-                [states[t]]))[0][0]
-        return advantage, gain
+        return float(total_rewards)/batch_size
 
     def evaluate(self, env, episode, num_episodes=100, render=False):
 

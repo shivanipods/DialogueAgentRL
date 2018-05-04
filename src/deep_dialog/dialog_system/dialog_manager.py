@@ -117,6 +117,16 @@ class DialogManager:
         else:
             reward = -1
         return reward
+
+    def reward_function_a2c(self, dialog_status):
+        """ Reward Function 3: a reward function based on the dialog_status """
+        if dialog_status == dialog_config.FAILED_DIALOG:
+            reward = -0.025 #10
+        elif dialog_status == dialog_config.SUCCESS_DIALOG:
+            reward = 2 - 0.025
+        else:
+            reward = -0.025
+        return reward
     
     def reward_function_without_penalty(self, dialog_status):
         """ Reward Function 2: a reward function without penalty on per turn and failure dialog """
