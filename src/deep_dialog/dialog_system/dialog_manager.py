@@ -7,13 +7,13 @@ Created on May 17, 2016
 import json
 from . import StateTracker
 from deep_dialog import dialog_config
-
+import ipdb
 
 class DialogManager:
     """ A dialog manager to mediate the interaction between an agent and a customer """
     
     def __init__(self, agent, user, act_set, slot_set, movie_dictionary, 
-            is_a2c=False, reward_function_idx=0):
+            is_a2c=False, reward_function_idx=3):
         self.agent = agent
         self.user = user
         self.act_set = act_set
@@ -23,7 +23,9 @@ class DialogManager:
         self.reward = 0
         self.episode_over = False
         self.is_a2c = is_a2c
-        self.reward_function_use = ['normal', 'a2c', 'paper'][reward_function_idx]
+        self.reward_function_use = ['normal', 'a2c', 'paper', 'lexical']\
+                [reward_function_idx]
+
     def initialize_episode(self):
         """ Refresh state for new dialog """
         self.reward = 0
@@ -101,7 +103,8 @@ class DialogManager:
             self.reward = self.reward_function_a2c(dialog_status)
         elif self.reward_function_use == 'paper':
             self.reward = self.reward_function_paper(dialog_status)
-        
+        elif self.reward_function_use == 'lexical':
+            self.reward = self.reward_function_lexical(dialog_status, self.sys_action)
         ########################################################################
         #   Update state tracker with latest user action
         ########################################################################
@@ -152,6 +155,7 @@ class DialogManager:
         else:
             reward = -1
         return reward    
+
     def reward_function_without_penalty(self, dialog_status):
         """ Reward Function 2: a reward function without penalty on per turn and failure dialog """
         if dialog_status == dialog_config.FAILED_DIALOG:
@@ -161,8 +165,17 @@ class DialogManager:
         else:
             reward = 0
         return reward
-    
-    
+ 
+    def reward_function_lexical(self, dialog_status, action):
+        """ Reward Function 2: a reward function without penalty on per turn and failure dialog """
+        if dialog_status == dialog_config.FAILED_DIALOG:
+            reward = - 0.05*self.user.max_turn
+        elif dialog_status == dialog_config.SUCCESS_DIALOG:
+            reward = 2 * self.user.max_turn
+        else:
+            reward = len(action['request_slots'].keys())
+        return reward
+       
     def print_function(self, agent_action=None, user_action=None):
         """ Print Function """
         if agent_action:
