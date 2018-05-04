@@ -294,9 +294,32 @@ class AgentA2C(Agent):
                 [states[t]]))[0][0]
         return advantage, gain
 
-    ## things to try:
-    ## replace get advantage from a+b code
-    ## try epsilon greedy in the beginning, freeze actor for a few episodes
+    def truncated_discounted_rewards(self, rewards):
+        batch_size = len(rewards) - self.n
+        truncated_rewards = np.zeros(batch_size)
+        for t in range(batch_size):
+            cumulative = 0
+            for i in range(0, self.n):
+                cumulative += math.pow(self.gamma, i) * rewards[t + i]
+            truncated_rewards[t] = cumulative
+        return truncated_rewards
+
+    def get_value_reward(self, states, rewards, values):
+        extended_values = np.concatenate((values.squeeze(1), np.zeros(self.n)))
+        extended_rewards = rewards + [0] * self.n
+        truncated_discounted_rewards = self.truncated_discounted_rewards(extended_rewards)
+        batch_size = len(rewards)
+        discounted_rewards = np.zeros_like(rewards)
+        for t in reversed(range(batch_size)):
+            discounted_rewards[t] = math.pow(self.gamma, self.n) * extended_values[t + self.n] + \
+                                    truncated_discounted_rewards[t]
+        return discounted_rewards
+
+    def get_advantage1(self, states, rewards):
+        values = self.critic_model.predict(np.asarray(states))
+        discounted_rewards = self.get_value_reward(states, rewards, values)
+        targets = np.array(discounted_rewards) - np.array(values)
+        return targets, discounted_rewards
 
     def train(self, states, actions, rewards, indexes, update_counter, gamma=0.99):
         self.epsilon = self.get_epsilon(update_counter)
@@ -305,6 +328,7 @@ class AgentA2C(Agent):
         states = [self.prepare_state_representation(x) for x in states]
         ## range for rewards in dialogue is reduced
         advantage, gains = self.get_advantage(states, rewards)
+        advantage1, gains1 = self.get_advantage1(states, rewards)
         advantage = advantage.reshape(-1, 1)
         actions = np.asarray(actions)
 

@@ -642,7 +642,7 @@ def run_episodes(count, status):
         if params['is_a2c'] and (agt==13 or agt == 14 or agt == 15) and params['trained_model_path'] == None:
             agent.predict_mode = True
             simulation_res, states, rewards, indexes, actions =  simulation_epoch(simulation_epoch_size)
-            
+            train_simulation_res, train_states, train_rewards, train_indexes, train_actions = simulation_epoch(1)
             performance_records['success_rate'][episode] = simulation_res['success_rate']
             performance_records['ave_turns'][episode] = simulation_res['ave_turns']
             performance_records['ave_reward'][episode] = simulation_res['ave_reward']
@@ -665,7 +665,7 @@ def run_episodes(count, status):
                 best_res['epoch'] = episode
                 
             #agent.clone_dqn = copy.deepcopy(agent.dqn)
-            agent.train(states, actions, rewards, indexes, episode+1)
+            agent.train(train_states, train_actions, train_rewards, train_indexes, episode+1)
             agent.predict_mode = False
             print ("Simulation success rate %s, Ave reward %s, Ave turns %s, Best success rate %s" % (performance_records['success_rate'][episode], performance_records['ave_reward'][episode], performance_records['ave_turns'][episode], best_res['success_rate']))
             if episode % save_check_point == 0 and params['trained_model_path'] == None: # save the model every 10 episodes
