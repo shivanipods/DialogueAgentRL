@@ -23,6 +23,7 @@ import gym
 from deep_dialog.dialog_system import DialogManager, text_to_dict
 import matplotlib
 import pickle
+import math
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -58,9 +59,12 @@ class AgentAdverserialA2C(Agent):
 		#
 		self.agent_act_level = params['agent_act_level']
 
-		# experience replay
-		# self.experience_replay_pool_size = params.get('experience_replay_pool_size', 1000)
-		# self.experience_replay_pool = [] #Replay_Memory(self.experience_replay_pool_size)
+		# epsilon
+		self.eps_fixed = params.get("eps_fixed", False)
+		self.eps_strat = params.get("eps_start", "linear_decay")
+		self.eps_start = params.get('eps_start', 0.3)
+		self.eps_end = params.get('eps_end', 0)
+		self.eps_decay = params.get('eps_decay', 1e3)
 
 		self.hidden_size = params.get('dqn_hidden_size', 60)
 		self.gamma = params.get('gamma', 0.99)
@@ -68,7 +72,7 @@ class AgentAdverserialA2C(Agent):
 		self.actor_lr = params.get('actor_lr', 0.0005)
 		self.critic_lr = params.get('critic_lr', 0.001)
 		self.gan_critic_lr = params.get('gan_critic_lr', 0.001)
-		self.discriminator_lr = params.get('discriminator_lr', 0.0005)
+		self.discriminator_lr = params.get('discriminator_lr', 0.001)
 		self.discriminator_batch_size = params.get('discriminator_batch_size', 1)
 		self.expert_path = params["expert_path"]
 
@@ -137,7 +141,7 @@ class AgentAdverserialA2C(Agent):
 
 	def build_actor_model(self, actor_lr):
 		model = Sequential()
-		fc1 = Dense(50, input_shape=(self.state_dimension,),
+		fc1 = Dense(80, input_shape=(self.state_dimension,),
 			activation='relu',
 			kernel_initializer=VarianceScaling(mode='fan_avg',
 			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
@@ -148,14 +152,14 @@ class AgentAdverserialA2C(Agent):
 			kernel_initializer=VarianceScaling(mode='fan_avg',
 			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
 		model.add(fc1)
-		model.add(fc2)
+		# model.add(fc2)
 		model.add(fc3)
 		model.compile(loss='mse', optimizer=Adam(lr=self.actor_lr))
 		self.actor_model = model
 
 	def build_critic_model(self, critic_lr, is_adverserial = False):
 		model = Sequential()
-		fc1 = Dense(50, input_shape=(self.state_dimension,), activation='relu',
+		fc1 = Dense(80, input_shape=(self.state_dimension,), activation='relu',
 			kernel_initializer=VarianceScaling(mode='fan_avg',
 			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
 		fc2 = Dense(50, activation='relu',
@@ -165,7 +169,7 @@ class AgentAdverserialA2C(Agent):
 			kernel_initializer=VarianceScaling(mode='fan_avg',
 			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
 		model.add(fc1)
-		model.add(fc2)
+		# model.add(fc2)
 		model.add(fc3)
 		model.compile(loss='mse', optimizer=Adam(lr=self.critic_lr))
 		if is_adverserial:
@@ -175,7 +179,7 @@ class AgentAdverserialA2C(Agent):
 
 	def build_discriminator(self, discriminator_lr):
 		model = Sequential()
-		fc1 = Dense(50, input_shape=(self.state_dimension + self.num_actions ,), activation='relu',
+		fc1 = Dense(80, input_shape=(self.state_dimension + self.num_actions ,), activation='relu',
 					kernel_initializer=VarianceScaling(mode='fan_avg',
 													   distribution='normal'))
 		fc2 = Dense(50, activation='relu',
@@ -185,7 +189,7 @@ class AgentAdverserialA2C(Agent):
 					kernel_initializer=VarianceScaling(mode='fan_avg',
 													   distribution='normal'))
 		model.add(fc1)
-		model.add(fc2)
+		# model.add(fc2)
 		model.add(fc3)
 		model.compile(optimizer=Adam(lr=self.discriminator_lr) , loss='binary_crossentropy', metrics=['accuracy'])
 		self.discriminator = model
@@ -285,13 +289,34 @@ class AgentAdverserialA2C(Agent):
 		self.final_representation = np.squeeze(self.final_representation)
 		return self.final_representation
 
+	def get_epsilon(self, update_counter):
+		if self.eps_strat == 'linear_decay':
+			eps_threshold = self.eps_start + (self.eps_end - self.eps_start) * min((update_counter / self.eps_decay), 1)
+		elif self.eps_strat == 'exp_decay':
+			eps_decay = self.eps_decay / 100
+			eps_threshold = self.eps_end + (self.eps_start - self.eps_end) * math.exp(-1. * update_counter / eps_decay)
+		elif self.eps_strat == 'log_decay':
+			# eps_threshold = eps_end + (eps_start - eps_end)
+			# max(self.epsilon_min, min(self.epsilon, 1.0 - math.log10((t + 1) * self.epsilon_decay)))
+			raise NotImplementedError()
+		return eps_threshold
+
 	def state_to_action(self, state):
 		""" A2C: Input state, output action """
 		representation = self.prepare_state_representation(state)
 		representation = np.expand_dims(np.asarray(representation), axis=0)
 		self.action = self.actor_model.predict(representation)
 		self.action = self.action.squeeze(0)
-		idx = np.random.choice(self.num_actions, 1, p=self.action)[0]
+
+		if self.eps_fixed == True:
+			idx = np.random.choice(self.num_actions, 1, p=self.action)[0]
+		else:
+			# epsilon greedy with the epsilon declining  from 0.95 to 0
+			if random.random() <= self.epsilon:
+				idx = random.randint(0, self.num_actions - 1)
+			else:
+				idx = np.argmax(self.action)
+
 		act_slot_response = copy.deepcopy(
 			self.feasible_actions[idx])
 		return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}, idx, self.action[idx]
@@ -383,7 +408,12 @@ class AgentAdverserialA2C(Agent):
 		return states, actions, rewards
 
 
-	def train(self, states, actions, rewards, indexes, gamma=0.99):
+	def train(self, states, actions, rewards, indexes, update_counter, gamma=0.99):
+
+		self.epsilon = self.get_epsilon(update_counter)
+		print("Epsilon: {0}".format(self.epsilon))
+
+
 		states = [self.prepare_state_representation(x) for x in states]
 		advantage, gains = self.get_advantage(states, rewards)
 
@@ -399,8 +429,11 @@ class AgentAdverserialA2C(Agent):
 		rewards = np.asarray(rewards)
 		tot_rewards = np.sum(rewards)
 
-		self.actor_model.train_on_batch(states, act_target)
-		self.critic_model.train_on_batch(states, gains)
+		if update_counter % 1 == 0:
+			actor_loss = self.actor_model.train_on_batch(states, act_target)
+			print("Actor Loss:{0:4f}".format(actor_loss))
+		critic_loss = self.critic_model.train_on_batch(states, gains)
+		print("Critic Loss:{0:4f}".format(critic_loss))
 
 		## sample from an expert episode and the current simulated episode
 		## in Goodfellow's original paper, he does it k times
@@ -419,11 +452,13 @@ class AgentAdverserialA2C(Agent):
 		sampled_simulated_example = np.concatenate((sampled_simulated_state, one_hot_simulated_action), axis=1)
 
 		## train discriminator
-		d_loss_real = self.discriminator.train_on_batch(sampled_expert_example,
-														np.ones((self.discriminator_batch_size, 1)))
-		d_loss_fake = self.discriminator.train_on_batch(sampled_simulated_example,
-														np.zeros((self.discriminator_batch_size, 1)))
-		d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
+		if update_counter % 1 == 0:
+			d_loss_real = self.discriminator.train_on_batch(sampled_expert_example,
+															np.ones((self.discriminator_batch_size, 1)))
+			d_loss_fake = self.discriminator.train_on_batch(sampled_simulated_example,
+															np.zeros((self.discriminator_batch_size, 1)))
+			d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
+			print("Discriminator Loss :{0}".format(d_loss))
 
 		## compute gan rewards
 		## call predict on a batch of the current simulated  episodes to get the class value
@@ -447,6 +482,14 @@ class AgentAdverserialA2C(Agent):
 
 		self.actor_model.train_on_batch(states, gan_act_target)
 		self.adversarial_critic_model.train_on_batch(states, gan_gains)
+
+		if update_counter % 1 == 0:
+			gan_actor_loss = self.actor_model.train_on_batch(states, gan_act_target)
+			print("Gan Actor Loss:{0:4f}".format(gan_actor_loss))
+
+		gan_critic_loss = self.critic_model.train_on_batch(states, gains)
+		print("Gan Critic Loss:{0:4f}".format(gan_critic_loss))
+
 		return tot_rewards
 
 	def evaluate(self, env, episode, num_episodes=100, render=False):

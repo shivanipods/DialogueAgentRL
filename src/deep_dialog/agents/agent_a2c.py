@@ -20,6 +20,7 @@ import ipdb
 from constants import *
 import random
 import gym
+import math
 
 import matplotlib
 
@@ -60,7 +61,7 @@ class AgentA2C(Agent):
 
         ## epsilon parameters
         self.eps_fixed = params.get("eps_fixed", False)
-        self.eps_strat = params.get("eps_start", "linear_decay")
+        self.eps_strat = params.get("eps_strat", "linear_decay")
         self.eps_start = params.get('eps_start', 0.3)
         self.eps_end = params.get('eps_end', 0)
         self.eps_decay = params.get('eps_decay', 1e3)
