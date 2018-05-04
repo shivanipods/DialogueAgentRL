@@ -128,7 +128,7 @@ if __name__ == "__main__":
     parser.add_argument('--critw', dest='critw', default=2.0, type=float, help='critic loss weight')
 
     ## arguments for epsilon greedy policy
-    parser.add_argument("--eps_fixed", action_store = True, default=False)
+    parser.add_argument("--eps_fixed", action= "store_true", default=False)
     parser.add_argument("--eps_strat", type =str, default="linear_decay")
     parser.add_argument('--eps_start', type=float, default=0.3)
     parser.add_argument('--eps_end', type=float, default=0)
