@@ -20,7 +20,7 @@ class DialogManager:
     """ A dialog manager to mediate the interaction between an agent and a customer """
     
     def __init__(self, agent, user, act_set, slot_set, movie_dictionary, 
-            is_a2c=False, reward_function_idx=Reward.LEXICAL):
+            is_a2c=False, reward_function_idx=Reward.NORMAL):
         self.agent = agent
         self.user = user
         self.act_set = act_set
@@ -73,6 +73,8 @@ class DialogManager:
             self.reward = self.reward_function_paper(dialog_status)
         elif self.reward_function_use == Reward.NO_PENALTY:
             self.reward = self.reward_function_without_penalty(dialog_status)
+        elif self.reward_function_use == Reward.LEXICAL:
+            self.reward = self.reward_function_lexical(dialog_status, self.sys_action)
 
         ########################################################################
         #   Update state tracker with latest user action
@@ -105,14 +107,18 @@ class DialogManager:
         ########################################################################
         self.sys_action = self.state_tracker.dialog_history_dictionaries()[-1]
         self.user_action, self.episode_over, dialog_status = self.user.next(self.sys_action)
-        if self.reward_function_use == 'normal':
+        if self.reward_function_use == Reward.NORMAL:
             self.reward = self.reward_function(dialog_status)
-        elif self.reward_function_use == 'a2c':
+        elif self.reward_function_use == Reward.A2C:
             self.reward = self.reward_function_a2c(dialog_status)
-        elif self.reward_function_use == 'paper':
+        elif self.reward_function_use == Reward.PAPER:
             self.reward = self.reward_function_paper(dialog_status)
-        elif self.reward_function_use == 'lexical':
+        elif self.reward_function_use == Reward.NO_PENALTY:
+            self.reward = self.reward_function_without_penalty(dialog_status)
+        elif self.reward_function_use == Reward.LEXICAL:
             self.reward = self.reward_function_lexical(dialog_status, self.sys_action)
+
+
         ########################################################################
         #   Update state tracker with latest user action
         ########################################################################
@@ -134,7 +140,7 @@ class DialogManager:
         if dialog_status == dialog_config.FAILED_DIALOG:
             reward = -self.user.max_turn #10
         elif dialog_status == dialog_config.SUCCESS_DIALOG:
-            reward = 3*self.user.max_turn #20
+            reward = 2 * self.user.max_turn #20
         else:
             reward = -1
         return reward
