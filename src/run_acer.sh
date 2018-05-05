@@ -17,7 +17,7 @@ python -u run.py --agt 16 \
         --warm_start 1 \
         --warm_start_epochs 200 \
         --gamma 0.99 \
-        --lrate 0.0001 \
+        --lrate 0.005 \
         --is_a2c \
         --save_check_point 200 \
         --eps_fixed

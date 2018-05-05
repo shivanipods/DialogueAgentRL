@@ -15,6 +15,7 @@ from keras.models import Sequential, Model
 from keras import regularizers
 from keras.layers import Dense, Input, Lambda
 from keras.optimizers import Adam
+from keras.optimizers import RMSprop
 from constants import *
 import random
 import ipdb
@@ -30,7 +31,7 @@ import matplotlib.pyplot as plt
 
 sess = tf.Session(config=tf.ConfigProto(log_device_placement=True,allow_soft_placement=True))
 keras.backend.set_session(sess)
-
+rms_optim = RMSprop(lr=0.001, rho=0.999, epsilon=10 ** -8, clipvalue=10 ** -3)
 def one_hot(action, categories=4):
 	x = np.zeros(categories)
 	x[action] = 1
@@ -141,7 +142,7 @@ class AgentAdverserialA2C(Agent):
 
 	def build_actor_model(self, actor_lr):
 		model = Sequential()
-		fc1 = Dense(130, input_shape=(self.state_dimension,),
+		fc1 = Dense(80, input_shape=(self.state_dimension,),
 			activation='relu',
 			kernel_initializer=VarianceScaling(mode='fan_avg',
 			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
@@ -152,14 +153,14 @@ class AgentAdverserialA2C(Agent):
 			kernel_initializer=VarianceScaling(mode='fan_avg',
 			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
 		model.add(fc1)
-		model.add(fc2)
+		#model.add(fc2)
 		model.add(fc3)
-		model.compile(loss='mse', optimizer=Adam(lr=self.actor_lr))
+		model.compile(loss='mse', optimizer=rms_optim)
 		self.actor_model = model
 
 	def build_critic_model(self, critic_lr, is_adverserial = False):
 		model = Sequential()
-		fc1 = Dense(130, input_shape=(self.state_dimension,), activation='relu',
+		fc1 = Dense(80, input_shape=(self.state_dimension,), activation='relu',
 			kernel_initializer=VarianceScaling(mode='fan_avg',
 			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
 		fc2 = Dense(50, activation='relu',
@@ -169,9 +170,9 @@ class AgentAdverserialA2C(Agent):
 			kernel_initializer=VarianceScaling(mode='fan_avg',
 			distribution='normal'), kernel_regularizer=regularizers.l2(0.01))
 		model.add(fc1)
-		model.add(fc2)
+		#model.add(fc2)
 		model.add(fc3)
-		model.compile(loss='mse', optimizer=Adam(lr=self.critic_lr))
+		model.compile(loss='mse', optimizer=rms_optim)
 		if is_adverserial:
 			self.adversarial_critic_model = model
 		else:
@@ -180,18 +181,18 @@ class AgentAdverserialA2C(Agent):
 	def build_discriminator(self, discriminator_lr):
 		model = Sequential()
 		fc1 = Dense(80, input_shape=(self.state_dimension + self.num_actions ,), activation='relu',
-					kernel_initializer=VarianceScaling(mode='fan_avg',
+					kernel_initializer=VarianceScaling(scale=0.5,mode='fan_avg',
 													   distribution='normal'))
 		fc2 = Dense(50, activation='relu',
-					kernel_initializer=VarianceScaling(mode='fan_avg',
+					kernel_initializer=VarianceScaling(scale=0.5,mode='fan_avg',
 													   distribution='normal'))
 		fc3 = Dense(1, activation='sigmoid',
-					kernel_initializer=VarianceScaling(mode='fan_avg',
+					kernel_initializer=VarianceScaling(scale=0.5,mode='fan_avg',
 													   distribution='normal'))
 		model.add(fc1)
-		model.add(fc2)
+		#model.add(fc2)
 		model.add(fc3)
-		model.compile(optimizer=Adam(lr=self.discriminator_lr) , loss='binary_crossentropy', metrics=['accuracy'])
+		model.compile(optimizer=rms_optim , loss='binary_crossentropy', metrics=['accuracy'])
 		self.discriminator = model
 
 	def initialize_episode(self):
@@ -438,26 +439,34 @@ class AgentAdverserialA2C(Agent):
 
 		## sample from an expert episode and the current simulated episode
 		## in Goodfellow's original paper, he does it k times
-		expert_states, expert_actions, expert_rewards = self.generate_expert_episode()
-		sampled_expert_index = np.random.randint(0, len(expert_states))
-		one_hot_expert_action = np.zeros((1, self.num_actions))
-		one_hot_expert_action[:, expert_actions[sampled_expert_index]] = 1
-		sampled_expert_state = np.array(expert_states[sampled_expert_index])
-		sampled_expert_state = np.expand_dims(sampled_expert_state, 0)
-		sampled_expert_example = np.concatenate((sampled_expert_state, one_hot_expert_action), axis=1)
-		sampled_simulated_index = np.random.randint(0, len(states))
-		one_hot_simulated_action = np.zeros((1, self.num_actions))
-		one_hot_simulated_action[:, indexes[sampled_simulated_index]] = 1
-		sampled_simulated_state = states[sampled_simulated_index]
-		sampled_simulated_state = np.expand_dims(sampled_simulated_state, 0)
-		sampled_simulated_example = np.concatenate((sampled_simulated_state, one_hot_simulated_action), axis=1)
+                expert_set = []
+                simulation_set = []
+                for k in range(32):
+                    expert_states, expert_actions, expert_rewards = self.generate_expert_episode()
+                    sampled_expert_index = np.random.randint(0, len(expert_states))
+                    one_hot_expert_action = np.zeros((1, self.num_actions))
+                    one_hot_expert_action[:, expert_actions[sampled_expert_index]] = 1
+                    sampled_expert_state = np.array(expert_states[sampled_expert_index])
+                    sampled_expert_state = np.expand_dims(sampled_expert_state, 0)
+                    
+                    sampled_expert_example = np.concatenate((sampled_expert_state, one_hot_expert_action), axis=1)
+                    expert_set.append(sampled_expert_example)
 
+                    sampled_simulated_index = np.random.randint(0, len(states))
+                    one_hot_simulated_action = np.zeros((1, self.num_actions))
+                    one_hot_simulated_action[:, indexes[sampled_simulated_index]] = 1
+                    sampled_simulated_state = states[sampled_simulated_index]
+                    sampled_simulated_state = np.expand_dims(sampled_simulated_state, 0)
+                    sampled_simulated_example = np.concatenate((sampled_simulated_state, one_hot_simulated_action), axis=1)
+                    simulation_set.append(sampled_simulated_example)
+                expert_set = np.asarray(expert_set)
+                simulation_set = np.asarray(simulation_set)
+                expert_labels = np.ones((32, 1))
+                simulation_labels = np.zeros((32, 0))
 		## train discriminator
 		if update_counter % 1 == 0:
-			d_loss_real = self.discriminator.train_on_batch(sampled_expert_example,
-															np.ones((self.discriminator_batch_size, 1)))
-			d_loss_fake = self.discriminator.train_on_batch(sampled_simulated_example,
-															np.zeros((self.discriminator_batch_size, 1)))
+			d_loss_real = self.discriminator.train_on_batch(expert_set, expert_labels)
+			d_loss_fake = self.discriminator.train_on_batch(simulation_set, simulation_labels)
 			d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
 			print("Discriminator Loss :{0}".format(d_loss))
 
@@ -470,6 +479,7 @@ class AgentAdverserialA2C(Agent):
 			concat_s_a = np.concatenate((s, one_hot))
 			state_action_pairs.append(concat_s_a)
 		probability_simulation = self.discriminator.predict(np.array(state_action_pairs))
+                probability_simulation = np.clip(probability_simulation, 10**-5, 1-10**-5)
 		gan_rewards = (-np.log(1 - probability_simulation)).flatten().tolist()
 
 		''' Train gan actor-critic network '''
