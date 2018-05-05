@@ -349,6 +349,7 @@ performance_records['success_rate'] = {}
 performance_records['ave_turns'] = {}
 performance_records['ave_reward'] = {}
 performance_records['std_reward'] = {}
+performance_records['std_turns'] = {}
 
 
 """ Save model """
