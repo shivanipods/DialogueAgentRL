@@ -348,6 +348,7 @@ performance_records = {}
 performance_records['success_rate'] = {}
 performance_records['ave_turns'] = {}
 performance_records['ave_reward'] = {}
+performance_records['std_reward'] = {}
 
 
 """ Save model """
@@ -625,8 +626,9 @@ def run_episodes(count, status):
             
             performance_records['success_rate'][episode] = simulation_res['success_rate']
             performance_records['ave_turns'][episode] = simulation_res['ave_turns']
+            performance_records['std_turns'][episode] = simulation_res['std_turns']
             performance_records['ave_reward'][episode] = simulation_res['ave_reward']
-            
+            performance_records['std_reward'][episode] = simulation_res['std_reward']
             if simulation_res['success_rate'] >= best_res['success_rate']:
                 if simulation_res['success_rate'] >= success_rate_threshold: # threshold = 0.30
                     agent.experience_replay_pool = [] 
@@ -654,9 +656,10 @@ def run_episodes(count, status):
             simulation_res, states, rewards, indexes, actions =  simulation_epoch(simulation_epoch_size)
             train_simulation_res, train_states, train_rewards, train_indexes, train_actions = simulation_epoch(1, to_test = False)
             performance_records['success_rate'][episode] = simulation_res['success_rate']
+            performance_records['std_turns'][episode] = simulation_res['std_turns']
             performance_records['ave_turns'][episode] = simulation_res['ave_turns']
             performance_records['ave_reward'][episode] = simulation_res['ave_reward']
-            
+            performance_records['std_reward'][episode] = simulation_res['std_reward']
             if simulation_res['success_rate'] >= best_res['success_rate']:
                 if simulation_res['success_rate'] >= success_rate_threshold: # threshold = 0.30
                     agent.experience_replay_pool = [] 
@@ -690,8 +693,9 @@ def run_episodes(count, status):
 
             performance_records['success_rate'][episode] = simulation_res['success_rate']
             performance_records['ave_turns'][episode] = simulation_res['ave_turns']
+            performance_records['std_turns'][episode] = simulation_res['std_turns']
             performance_records['ave_reward'][episode] = simulation_res['ave_reward']
-
+            performance_records['std_reward'][episode] = simulation_res['std_reward']
             if simulation_res['success_rate'] >= best_res['success_rate']:
                 if simulation_res['success_rate'] >= success_rate_threshold: # threshold = 0.30
                     agent.experience_replay_pool = []
