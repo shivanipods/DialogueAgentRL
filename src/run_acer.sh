@@ -6,8 +6,8 @@ python -u run.py --agt 16 \
         --dqn_hidden_size 80 \
         --experience_replay_pool_size 1000 \
         --episodes 4000 \
-        --simulation_epoch_size 100 \
-        --write_model_dir ./deep_dialog/checkpoints/rl_agent/ \
+        --simulation_epoch_size 50 \
+        --write_model_dir ./deep_dialog/checkpoints/rl_agent_acer/ \
         --run_mode 10 \
         --act_level 0 \
         --slot_err_prob 0.00 \
@@ -15,7 +15,9 @@ python -u run.py --agt 16 \
         --batch_size 64 \
         --goal_file_path ./deep_dialog/data/user_goals_first_turn_template.part.movie.v1.p \
         --warm_start 1 \
-        --warm_start_epochs 100 \
+        --warm_start_epochs 200 \
         --gamma 0.99 \
-        --lrate 0.001 \
-        --is_a2c
+        --lrate 0.005 \
+        --is_a2c \
+        --save_check_point 200 \
+        --eps_fixed

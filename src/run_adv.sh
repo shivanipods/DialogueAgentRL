@@ -1,0 +1,25 @@
+CUDA_VISIBLE_DEVICES=0 python run.py --agt 14 --usr 1 --max_turn 40 \
+	      --movie_kb_path ./deep_dialog/data/movie_kb.1k.p \
+	      --experience_replay_pool_size 1000 \
+	      --dqn_hidden_size 80 \
+          --episodes 4000 \
+	      --simulation_epoch_size 50 \
+	      --write_model_dir ./deep_dialog/checkpoints/adv_a2c/ \
+	      --run_mode 10 \
+	      --act_level 0 \
+	      --slot_err_prob 0.00 \
+	      --intent_err_prob 0.00 \
+	      --batch_size 32 \
+          --expert_path ./deep_dialog/expert/agt_10_100_400_0.94000.h5 \
+	      --goal_file_path ./deep_dialog/data/user_goals_first_turn_template.part.movie.v1.p \
+	      --warm_start 1 \
+	      --warm_start_epochs 1 \
+          --cmd_input_mode 0 \
+          --save_check_point 200 \
+          --n 1 \
+          --gamma 0.9 \
+          --freeze 1 \
+          --is_a2c \
+          --eps_strat exp_decay \
+          --critic_lr 0.001 \
+          --actor_lr 0.001

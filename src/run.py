@@ -120,7 +120,7 @@ if __name__ == "__main__":
     parser.add_argument('--target_sample_type', dest='target_sample_type', default='map', type=str, help='type of sampling for target q-network')
     parser.add_argument('--lrate', dest='lrate', default=0.0005, type=float, help='learning rate')
     parser.add_argument('--actor_lr', dest='actor_lr', default=0.0005, type=float, help='actor learning rate')
-    parser.add_argument('--critic_lr', dest='critic_lr', default=0.001, type=float, help='critic learning rate')
+    parser.add_argument('--critic_lr', dest='critic_lr', default=0.0001, type=float, help='critic learning rate')
     parser.add_argument('--gan_critic_lr', dest='gan_critic_lr', default=0.001, type=float, help='adverserial critic learning rate')
     parser.add_argument('--discriminator_lr', dest='discriminator_lr', default=0.0005)
     parser.add_argument('--n', dest='n', default=50, type=int, help='critics N')
@@ -390,7 +390,7 @@ def save_model(path, agt, success_rate, model_agent, best_epoch, cur_epoch, is_a
             print('Error: Writing model fails: %s' % (filepath,))
     ## TODO: Add support for adeversarial dqn (to save gan critic)
     checkpoint['params'] = params
-    pickle.dump(checkpoint, open(filepath, "wb"))
+    pickle.dump(checkpoint, open(filepath+ ".p", "wb"))
 
 
 def load_model(path, is_a2c = False):

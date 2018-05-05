@@ -7,13 +7,20 @@ Created on May 17, 2016
 import json
 from . import StateTracker
 from deep_dialog import dialog_config
+import ipdb
+from enum import Enum
 
+def enum(*sequential, **named):
+    enums = dict(zip(sequential, range(len(sequential))), **named)
+    return type('Enum', (), enums)
+
+Reward = enum('NORMAL', 'A2C', 'PAPER', 'LEXICAL', 'NO_PENALTY')
 
 class DialogManager:
     """ A dialog manager to mediate the interaction between an agent and a customer """
     
     def __init__(self, agent, user, act_set, slot_set, movie_dictionary, 
-            is_a2c=False, reward_function_idx=0):
+            is_a2c=False, reward_function_idx=Reward.NORMAL):
         self.agent = agent
         self.user = user
         self.act_set = act_set
@@ -23,7 +30,8 @@ class DialogManager:
         self.reward = 0
         self.episode_over = False
         self.is_a2c = is_a2c
-        self.reward_function_use = ['normal', 'a2c', 'paper'][reward_function_idx]
+        self.reward_function_use = reward_function_idx
+
     def initialize_episode(self):
         """ Refresh state for new dialog """
         self.reward = 0
@@ -57,12 +65,16 @@ class DialogManager:
         ########################################################################
         self.sys_action = self.state_tracker.dialog_history_dictionaries()[-1]
         self.user_action, self.episode_over, dialog_status = self.user.next(self.sys_action)
-        if self.reward_function_use == 'normal':
+        if self.reward_function_use == Reward.NORMAL:
             self.reward = self.reward_function(dialog_status)
-        elif self.reward_function_use == 'a2c':
+        elif self.reward_function_use == Reward.A2C:
             self.reward = self.reward_function_a2c(dialog_status)
-        elif self.reward_function_use == 'paper':
+        elif self.reward_function_use == Reward.PAPER:
             self.reward = self.reward_function_paper(dialog_status)
+        elif self.reward_function_use == Reward.NO_PENALTY:
+            self.reward = self.reward_function_without_penalty(dialog_status)
+        elif self.reward_function_use == Reward.LEXICAL:
+            self.reward = self.reward_function_lexical(dialog_status, self.sys_action)
 
         ########################################################################
         #   Update state tracker with latest user action
@@ -95,13 +107,18 @@ class DialogManager:
         ########################################################################
         self.sys_action = self.state_tracker.dialog_history_dictionaries()[-1]
         self.user_action, self.episode_over, dialog_status = self.user.next(self.sys_action)
-        if self.reward_function_use == 'normal':
+        if self.reward_function_use == Reward.NORMAL:
             self.reward = self.reward_function(dialog_status)
-        elif self.reward_function_use == 'a2c':
+        elif self.reward_function_use == Reward.A2C:
             self.reward = self.reward_function_a2c(dialog_status)
-        elif self.reward_function_use == 'paper':
+        elif self.reward_function_use == Reward.PAPER:
             self.reward = self.reward_function_paper(dialog_status)
-        
+        elif self.reward_function_use == Reward.NO_PENALTY:
+            self.reward = self.reward_function_without_penalty(dialog_status)
+        elif self.reward_function_use == Reward.LEXICAL:
+            self.reward = self.reward_function_lexical(dialog_status, self.sys_action)
+
+
         ########################################################################
         #   Update state tracker with latest user action
         ########################################################################
@@ -123,7 +140,7 @@ class DialogManager:
         if dialog_status == dialog_config.FAILED_DIALOG:
             reward = -self.user.max_turn #10
         elif dialog_status == dialog_config.SUCCESS_DIALOG:
-            reward = 3*self.user.max_turn #20
+            reward = 2 * self.user.max_turn #20
         else:
             reward = -1
         return reward
@@ -152,17 +169,27 @@ class DialogManager:
         else:
             reward = -1
         return reward    
+
     def reward_function_without_penalty(self, dialog_status):
         """ Reward Function 2: a reward function without penalty on per turn and failure dialog """
         if dialog_status == dialog_config.FAILED_DIALOG:
             reward = 0
         elif dialog_status == dialog_config.SUCCESS_DIALOG:
-            reward = 2*self.user.max_turn
+            reward = 2 * self.user.max_turn
         else:
             reward = 0
         return reward
-    
-    
+ 
+    def reward_function_lexical(self, dialog_status, action):
+        """ Reward Function 2: a reward function without penalty on per turn and failure dialog """
+        if dialog_status == dialog_config.FAILED_DIALOG:
+            reward = - 0.05 * self.user.max_turn
+        elif dialog_status == dialog_config.SUCCESS_DIALOG:
+            reward = 2 * self.user.max_turn
+        else:
+            reward = len(action['request_slots'].keys())
+        return reward
+       
     def print_function(self, agent_action=None, user_action=None):
         """ Print Function """
         if agent_action:
