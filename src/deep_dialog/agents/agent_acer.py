@@ -340,7 +340,7 @@ class AgentACER(Agent):
             idx  = self.rule_policy()
             act_slot_response = copy.deepcopy(
                 self.feasible_actions[idx])
-            return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}, idx, self.action[idx]
+            return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}, idx, 1
         if self.eps_fixed == True:
             idx = np.random.choice(self.num_actions, 1, p=self.action)[0]
         else:
