@@ -40,7 +40,7 @@ def one_hot(action, categories=4):
 
 class AgentSharedA2C(Agent):
     def __init__(self, movie_dict=None, act_set=None, slot_set=None, params=None):
-
+        self.test_time = False
         ## parameters associated with dialogue action and slot filling
         self.movie_dict = movie_dict
         self.act_set = act_set
@@ -239,14 +239,17 @@ class AgentSharedA2C(Agent):
         representation = np.expand_dims(np.asarray(representation), axis=0)
         self.action, _ = self.shared_model.predict(representation)
         self.action = self.action.squeeze(0)
-        if self.eps_fixed == True:
-            idx = np.random.choice(self.num_actions, 1, p=self.action)[0]
+        if self.test_time:
+            idx = np.argmax(self.action)
         else:
-            # epsilon greedy with the epsilon declining  from 0.95 to 0
-            if random.random() <= self.epsilon:
-                idx = random.randint(0, self.num_actions - 1)
+            if self.eps_fixed == True:
+                idx = np.random.choice(self.num_actions, 1, p=self.action)[0]
             else:
-                idx = np.argmax(self.action)
+                # epsilon greedy with the epsilon declining  from 0.95 to 0
+                if random.random() <= self.epsilon:
+                    idx = random.randint(0, self.num_actions - 1)
+                else:
+                    idx = np.argmax(self.action)
         act_slot_response = copy.deepcopy(
             self.feasible_actions[idx])
         return {'act_slot_response': act_slot_response, 'act_slot_value_response': None}, idx, self.action[idx]

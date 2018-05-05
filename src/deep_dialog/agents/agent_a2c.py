@@ -40,7 +40,7 @@ def one_hot(action, categories=4):
 
 class AgentA2C(Agent):
     def __init__(self, movie_dict=None, act_set=None, slot_set=None, params=None):
-
+        self.test_time = False
         ## parameters associated with dialogue action and slot filling
         self.movie_dict = movie_dict
         self.act_set = act_set
@@ -259,15 +259,17 @@ class AgentA2C(Agent):
         representation = np.expand_dims(np.asarray(representation), axis=0)
         self.action = self.actor_model.predict(representation)
         self.action = self.action.squeeze(0)
-
-        if self.eps_fixed == True:
-            idx = np.random.choice(self.num_actions, 1, p=self.action)[0]
+        if self.test_time:
+            idx = np.argmax(self.action)
         else:
-            # epsilon greedy with the epsilon declining  from 0.95 to 0
-            if random.random() <= self.epsilon:
-                idx = random.randint(0, self.num_actions - 1)
+            if self.eps_fixed == True:
+                idx = np.random.choice(self.num_actions, 1, p=self.action)[0]
             else:
-                idx = np.argmax(self.action)
+                # epsilon greedy with the epsilon declining  from 0.95 to 0
+                if random.random() <= self.epsilon:
+                    idx = random.randint(0, self.num_actions - 1)
+                else:
+                    idx = np.argmax(self.action)
 
         act_slot_response = copy.deepcopy(
             self.feasible_actions[idx])
@@ -288,6 +290,7 @@ class AgentA2C(Agent):
         v_end = np.zeros(T)
         gain = np.zeros(T)
         advantage = np.zeros(T)
+        values = []
         # states = [self.prepare_state_representation(x) for x in states]
         for t in reversed(range(len(rewards))):
             if t + self.n >= T:
@@ -300,9 +303,12 @@ class AgentA2C(Agent):
                                if t + k < T \
                                else self.gamma ** k * 0 \
                            for k in range(self.n)])
-            advantage[t] = gain[t] - self.critic_model.predict(np.asarray(
+            temp = self.critic_model.predict(np.asarray(
                 [states[t]]))[0][0]
-        return advantage, gain
+            advantage[t] = gain[t] - temp
+            values.append(temp)
+        print(values)
+        return advantage, gain, values[::-1]
 
     def truncated_discounted_rewards(self, rewards):
         batch_size = len(rewards) - self.n
@@ -319,17 +325,17 @@ class AgentA2C(Agent):
         extended_rewards = rewards + [0] * self.n
         truncated_discounted_rewards = self.truncated_discounted_rewards(extended_rewards)
         batch_size = len(rewards)
-        discounted_rewards = np.zeros_like(rewards)
+        discounted_rewards = np.zeros(len(rewards))
         for t in reversed(range(batch_size)):
-            discounted_rewards[t] = math.pow(self.gamma, self.n) * extended_values[t + self.n] + \
+            discounted_rewards[t] = (self.gamma ** self.n) * extended_values[t + self.n] + \
                                     truncated_discounted_rewards[t]
         return discounted_rewards
 
     def get_advantage1(self, states, rewards):
         values = self.critic_model.predict(np.asarray(states))
         discounted_rewards = self.get_value_reward(states, rewards, values)
-        targets = np.array(discounted_rewards) - np.array(values)
-        return targets, discounted_rewards
+        targets = discounted_rewards - values.squeeze(1)
+        return targets, discounted_rewards, values
 
     def train(self, states, actions, rewards, indexes, update_counter, gamma=0.99):
         self.epsilon = self.get_epsilon(update_counter)
@@ -337,8 +343,8 @@ class AgentA2C(Agent):
 
         states = [self.prepare_state_representation(x) for x in states]
         ## range for rewards in dialogue is reduced
-        advantage, gains = self.get_advantage(states, rewards)
-        # advantage1, gains1 = self.get_advantage1(states, rewards)
+        advantage, gains, values = self.get_advantage(states, rewards)
+        advantage1, gains1, values1 = self.get_advantage1(states, rewards)
         advantage = advantage.reshape(-1, 1)
         actions = np.asarray(actions)
 

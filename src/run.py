@@ -450,7 +450,8 @@ def save_performance_records(path, agt, records):
         print(e)
 
 """ Run N simulation Dialogues """
-def simulation_epoch(simulation_epoch_size):
+def simulation_epoch(simulation_epoch_size, to_test = True):
+    agent.test_time = to_test
     successes = 0
     cumulative_reward = 0
     cumulative_turns = 0
@@ -490,6 +491,7 @@ def simulation_epoch(simulation_epoch_size):
     res['std_reward'] = np.std(cumulative_reward_list)
     res['std_turns'] = np.std(cumulative_turn_list)
     print ("simulation success rate %s, ave reward %s, ave turns %s" % (res['success_rate'], res['ave_reward'], res['ave_turns']))
+    agent.test_time = False
     return res, states, rewards, indexes, actions
 
 """ Warm_Start Simulation (by Rule Policy) """
@@ -650,7 +652,7 @@ def run_episodes(count, status):
         if params['is_a2c'] and (agt==13 or agt == 14 or agt == 15) and params['trained_model_path'] == None:
             agent.predict_mode = True
             simulation_res, states, rewards, indexes, actions =  simulation_epoch(simulation_epoch_size)
-            train_simulation_res, train_states, train_rewards, train_indexes, train_actions = simulation_epoch(1)
+            train_simulation_res, train_states, train_rewards, train_indexes, train_actions = simulation_epoch(1, to_test = False)
             performance_records['success_rate'][episode] = simulation_res['success_rate']
             performance_records['ave_turns'][episode] = simulation_res['ave_turns']
             performance_records['ave_reward'][episode] = simulation_res['ave_reward']
