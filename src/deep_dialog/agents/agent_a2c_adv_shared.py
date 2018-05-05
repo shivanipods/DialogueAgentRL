@@ -40,7 +40,7 @@ def one_hot(action, categories=4):
 	return x
 
 
-class AgentAdverserialA2C(Agent):
+class AgentSharedAdversarial(Agent):
 	def __init__(self, movie_dict=None, act_set=None, slot_set=None, params=None):
 
 		## parameters associated with dialogue action and slot filling
@@ -91,6 +91,7 @@ class AgentAdverserialA2C(Agent):
 
 		# Build models
 		self.build_expert_model()
+		self.build_discriminator(self.discriminator_lr)
 		self.build_shared_model()
 
 		self.n = params.get('n', 5)
@@ -170,18 +171,16 @@ class AgentAdverserialA2C(Agent):
 		shared_model1 = keras.models.Model(inputs=state_input, outputs=[actor_output, critic_env_output])
 		shared_model1.compile(optimizer=rms_optim,
 							 loss={'act_output': 'categorical_crossentropy',
-								   'crit_env_output': 'mean_squared_error',
-								   '': ''},
-							 loss_weights={'act_output': 1., 'crit_output': 1})
+								   'crit_env_output': 'mean_squared_error'},
+							 loss_weights={'act_output': 1., 'crit_env_output': 1})
 
 		critic_gan_output = critic_gan_model(shared_output)
 
 		shared_model2 = keras.models.Model(inputs=state_input, outputs=[actor_output, critic_gan_output])
 		shared_model2.compile(optimizer=rms_optim,
 							 loss={'act_output': 'categorical_crossentropy',
-								   'crit_gan_output': 'mean_squared_error',
-								    '' : ''},
-							 loss_weights={'act_output': 1., 'crit_output': 1})
+								   'crit_adv_output': 'mean_squared_error'},
+							 loss_weights={'act_output': 1., 'crit_adv_output': 1})
 
 		self.environment_actor_critic = shared_model1
 		self.adversarial_actor_critic = shared_model2
@@ -348,7 +347,7 @@ class AgentAdverserialA2C(Agent):
 		gain = np.zeros(T)
 		advantage = np.zeros(T)
 		# states = [self.prepare_state_representation(x) for x in states]
-		for t in reversed(range(len(rewards) - 1)):
+		for t in reversed(range(len(rewards))):
 			if t + self.n >= T:
 				v_end[t] = 0
 			else:
@@ -392,6 +391,7 @@ class AgentAdverserialA2C(Agent):
 					########################################################################
 					state = self.manager.state_tracker.get_state_for_agent()  ## this code is tracking the dialogue state
 					representation = self.prepare_state_representation(state)
+					states.append(representation)
 					state_tensor = np.expand_dims(np.asarray(representation), axis=0)
 					qvalues = self.expert.predict(state_tensor)
 					action = np.argmax(qvalues)
@@ -406,10 +406,11 @@ class AgentAdverserialA2C(Agent):
 						if reward > 0:
 							successes += 1
 							# return the first succesful dialogue
+							rewards.append(reward)
+							actions.append(action)
 							return states, actions, rewards
 						else:
 							done = False
-					states.append(representation)
 					rewards.append(reward)
 					actions.append(action)
 			except:
@@ -438,7 +439,7 @@ class AgentAdverserialA2C(Agent):
 		rewards = np.asarray(rewards)
 		tot_rewards = np.sum(rewards)
 
-		self.environment_actor_critic.train_on_batch(states, {'act_output': act_target, 'crit_output': gains})
+		self.environment_actor_critic.train_on_batch(states, {'act_output': act_target, 'crit_env_output': gains})
 
 		## sample from an expert episode and the current simulated episode
 		## in Goodfellow's original paper, he does it k times
@@ -453,6 +454,7 @@ class AgentAdverserialA2C(Agent):
 			sampled_expert_state = np.expand_dims(sampled_expert_state, 0)
 
 			sampled_expert_example = np.concatenate((sampled_expert_state, one_hot_expert_action), axis=1)
+			sampled_expert_example = np.squeeze(sampled_expert_example, 0)
 			expert_set.append(sampled_expert_example)
 
 			sampled_simulated_index = np.random.randint(0, len(states))
@@ -461,11 +463,13 @@ class AgentAdverserialA2C(Agent):
 			sampled_simulated_state = states[sampled_simulated_index]
 			sampled_simulated_state = np.expand_dims(sampled_simulated_state, 0)
 			sampled_simulated_example = np.concatenate((sampled_simulated_state, one_hot_simulated_action), axis=1)
+			sampled_simulated_example = np.squeeze(sampled_simulated_example, 0)
+
 			simulation_set.append(sampled_simulated_example)
 		expert_set = np.asarray(expert_set)
 		simulation_set = np.asarray(simulation_set)
 		expert_labels = np.ones((32, 1))
-		simulation_labels = np.zeros((32, 0))
+		simulation_labels = np.zeros((32, 1))
 		## train discriminator
 		if update_counter % 1 == 0:
 			d_loss_real = self.discriminator.train_on_batch(expert_set, expert_labels)
@@ -494,7 +498,7 @@ class AgentAdverserialA2C(Agent):
 		gan_act_target[np.arange(len(states)), np.array(indexes)] \
 			= gan_targets.squeeze(1)
 
-		self.adversarial_actor_critic.train_on_batch(states, {'act_output': gan_act_target, 'crit_output': gan_gains})
+		self.adversarial_actor_critic.train_on_batch(states, {'act_output': gan_act_target, 'crit_adv_output': gan_gains})
 		return tot_rewards
 
 	def evaluate(self, env, episode, num_episodes=100, render=False):

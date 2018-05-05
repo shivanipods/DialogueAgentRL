@@ -38,7 +38,7 @@ from deep_dialog.dialog_system import DialogManager, text_to_dict
 from deep_dialog.agents import AgentCmd, InformAgent, RequestAllAgent, \
         RandomAgent, EchoAgent, RequestBasicsAgent, \
         AgentDQN, AgentDQNKeras, AgentDQNBoltzmann, AgentBBQN, AgentA2C, \
-        AgentAdverserialA2C, AgentACER, AgentSharedA2C
+        AgentAdverserialA2C, AgentACER, AgentSharedA2C, AgentSharedAdversarial
 from deep_dialog.usersims import RuleSimulator
 
 from deep_dialog import dialog_config
@@ -257,6 +257,8 @@ if params['is_a2c']:
         agent = AgentSharedA2C(movie_kb, act_set, slot_set, agent_params)
     elif agt == 16:
         agent = AgentACER(movie_kb, act_set, slot_set, agent_params)
+    elif agt == 17:
+        agent = AgentSharedAdversarial(movie_kb, act_set, slot_set, agent_params)
 
 ################################################################################
 #    Add your agent here
@@ -319,7 +321,7 @@ user_sim.set_nlu_model(nlu_model)
 dialog_manager = DialogManager(agent, user_sim, act_set, slot_set, movie_kb, 
         params['is_a2c'])
 
-if params['is_a2c'] and agt == 14:
+if params['is_a2c'] and agt == 14 or agt == 17:
     ## since adversarial a2c needs the dialogue manager to simulate expert episode
     agent.manager = dialog_manager
     
@@ -359,7 +361,7 @@ def save_model(path, agt, success_rate, model_agent, best_epoch, cur_epoch, is_a
     checkpoint = {}
     #ipdb.set_trace()
     if agt == 9: checkpoint['model'] = copy.deepcopy(model_agent.dqn.model)
-    if agt == 10 or agt == 11 or agt == 12 or agt == 15:
+    if agt == 10 or agt == 11 or agt == 12 or agt == 15 or agt == 17:
         try:
             # serialize model to JSON
             model_json = model_agent.to_json()
@@ -397,7 +399,7 @@ def save_model(path, agt, success_rate, model_agent, best_epoch, cur_epoch, is_a
 
 def load_model(path, is_a2c = False):
     checkpoint = {}
-    if agt == 10 or agt == 11 or agt == 12 or agt == 15 or agt == 16:
+    if agt == 10 or agt == 11 or agt == 12 or agt == 15 or agt == 16 or agt == 17:
         try:
             json_file = open(path + '.json', 'r')
             loaded_model_json = json_file.read()
@@ -652,7 +654,7 @@ def run_episodes(count, status):
                 save_performance_records(params['write_model_dir'], agt, performance_records)
         
         # simulation for A2C
-        if params['is_a2c'] and (agt==13 or agt == 14 or agt == 15) and params['trained_model_path'] == None:
+        if params['is_a2c'] and (agt==13 or agt == 14 or agt == 15 or agt == 17) and params['trained_model_path'] == None:
             agent.predict_mode = True
             simulation_res, states, rewards, indexes, actions =  simulation_epoch(simulation_epoch_size)
             train_simulation_res, train_states, train_rewards, train_indexes, train_actions = simulation_epoch(1, to_test = False)
@@ -673,6 +675,8 @@ def run_episodes(count, status):
                     best_model['model']["critic_model"] = agent.critic_model
                 elif agt == 15:
                     best_model['model'] = agent.shared_model
+                elif agt == 17:
+                    best_model['model'] = agent.environment_actor_critic
                 best_res['success_rate'] = simulation_res['success_rate']
                 best_res['ave_reward'] = simulation_res['ave_reward']
                 best_res['ave_turns'] = simulation_res['ave_turns']
@@ -729,7 +733,7 @@ def run_episodes(count, status):
     status['successes'] += successes
     status['count'] += count
     
-    if agt == 9 or agt == 10 or agt == 11 or agt == 12 or agt==13 or agt==14 or agt == 15 or agt == 16 and params['trained_model_path'] == None:
+    if agt == 9 or agt == 10 or agt == 11 or agt == 12 or agt==13 or agt==14 or agt == 15 or agt == 16 or agt == 17 and params['trained_model_path'] == None:
         save_model(params['write_model_dir'], agt, float(successes)/count, best_model['model'], best_res['epoch'], count)
         save_performance_records(params['write_model_dir'], agt, performance_records)
 
@@ -740,7 +744,7 @@ def test_episodes(num_runs, status, is_a2c, agt):
     ## TODO: Unsure if this copying trick works for keras implementation
     if is_a2c==False:
         agent.dqn = checkpoint["model"]
-    elif agt == 15:
+    elif agt == 15 or agt == 17:
         agent.shared_model = checkpoint["model"]
     else:
         agent.actor_model = checkpoint['actor_model']
