@@ -333,7 +333,7 @@ class AgentSharedA2C(Agent):
         rewards = np.asarray(rewards)
         tot_rewards = np.sum(rewards)
         
-        actor_loss, critic_loss  = self.shared_model.train_on_batch(states, {'act_output': act_target,'crit_output': gains})
+        _, actor_loss, critic_loss  = self.shared_model.train_on_batch(states, {'act_output': act_target,'crit_output': gains})
 
         print("Actor Loss:{0:4f}".format(actor_loss))
         print("Critic Loss:{0:4f}".format(critic_loss))
