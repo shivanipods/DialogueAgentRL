@@ -26,7 +26,8 @@ class Agent:
         self.epsilon = params['epsilon']
         self.agent_run_mode = params['agent_run_mode']
         self.agent_act_level = params['agent_act_level']
-        self.boltzmann = boltzmann 
+        self.boltzmann = boltzmann
+        self.test_time = False
 
     def initialize_episode(self):
         """ Initialize a new episode. This function is called every time a new episode is run. """

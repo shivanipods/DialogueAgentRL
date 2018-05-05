@@ -29,18 +29,21 @@ import math
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-sess = tf.Session(config=tf.ConfigProto(log_device_placement=True,allow_soft_placement=True))
+sess = tf.Session(config=tf.ConfigProto(log_device_placement=True, allow_soft_placement=True))
 keras.backend.set_session(sess)
 rms_optim = RMSprop(lr=0.001, rho=0.999, epsilon=10 ** -8, clipvalue=10 ** -3)
+
+
 def one_hot(action, categories=4):
 	x = np.zeros(categories)
 	x[action] = 1
 	return x
 
+
 class AgentAdverserialA2C(Agent):
 	def __init__(self, movie_dict=None, act_set=None, slot_set=None, params=None):
+
 		## parameters associated with dialogue action and slot filling
-		self.test_time = False
 		self.movie_dict = movie_dict
 		self.act_set = act_set
 		self.slot_set = slot_set
@@ -83,17 +86,14 @@ class AgentAdverserialA2C(Agent):
 		## dropout
 		self.dropout = params.get('dropout', 0.2)
 
-
 		self.max_turn = params['max_turn'] + 4
 		self.state_dimension = 2 * self.act_cardinality + 7 * self.slot_cardinality + 3 + self.max_turn
 
 		# Build models
 		self.build_expert_model()
-		self.build_actor_model(self.actor_lr)
-		self.build_critic_model(self.critic_lr)
-		self.build_critic_model(self.gan_critic_lr, True)
-		self.build_discriminator(self.gan_critic_lr)
-		self.n = params.get('n', 50)
+		self.build_shared_model()
+
+		self.n = params.get('n', 5)
 
 		## load a model if present
 		if params['trained_model_path'] != None:
@@ -143,60 +143,66 @@ class AgentAdverserialA2C(Agent):
 		model.load_weights(self.expert_path)
 		self.expert = model
 
-	def build_actor_model(self, actor_lr):
+	def build_shared_model(self):
 		model = Sequential()
 		fc1 = Dense(80, input_shape=(self.state_dimension,),
-			activation='relu',
-			kernel_initializer=VarianceScaling(mode='fan_avg',
-			distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
-		fc2 = Dense(50, activation='relu',
-			kernel_initializer=VarianceScaling(mode='fan_avg',
-			distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
-		fc3 = Dense(self.num_actions, activation='softmax',
-			kernel_initializer=VarianceScaling(mode='fan_avg',
-			distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
+					activation='relu',
+					kernel_initializer=VarianceScaling(mode='fan_avg',
+													   distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
 		model.add(fc1)
-		#model.add(fc2)
-		model.add(fc3)
-		model.compile(loss='mse', optimizer=rms_optim)
-		self.actor_model = model
+		critic_env_model = Dense(1, activation='linear', kernel_initializer=VarianceScaling(mode='fan_avg',
+                                          distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost),
+                                          name='crit_env_output')
+		critic_gan_model = Dense(1, activation='linear', kernel_initializer=VarianceScaling(mode='fan_avg',
+																					  distribution='normal'),
+						   kernel_regularizer=regularizers.l2(self.reg_cost),
+						   name='crit_adv_output')
+		actor_model = Dense(self.num_actions, activation='softmax', kernel_initializer=VarianceScaling(mode='fan_avg',
+																									   distribution='normal'),
+							kernel_regularizer=regularizers.l2(self.reg_cost),
+							name='act_output')
 
-	def build_critic_model(self, critic_lr, is_adverserial = False):
-		model = Sequential()
-		fc1 = Dense(80, input_shape=(self.state_dimension,), activation='relu',
-			kernel_initializer=VarianceScaling(mode='fan_avg',
-			distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
-		fc2 = Dense(50, activation='relu',
-			kernel_initializer=VarianceScaling(mode='fan_avg',
-			distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
-		fc3 = Dense(1, activation='linear',
-			kernel_initializer=VarianceScaling(mode='fan_avg',
-			distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
-		model.add(fc1)
-		#model.add(fc2)
-		model.add(fc3)
-		model.compile(loss='mse', optimizer=rms_optim)
-		if is_adverserial:
-			self.adversarial_critic_model = model
-		else:
-			self.critic_model = model
+		state_input = keras.layers.Input(shape=(self.state_dimension,), name='state_input')
+		shared_output = model(state_input)
+		actor_output = actor_model(shared_output)
+		critic_env_output = critic_env_model(shared_output)
+
+		shared_model1 = keras.models.Model(inputs=state_input, outputs=[actor_output, critic_env_output])
+		shared_model1.compile(optimizer=rms_optim,
+							 loss={'act_output': 'categorical_crossentropy',
+								   'crit_env_output': 'mean_squared_error',
+								   '': ''},
+							 loss_weights={'act_output': 1., 'crit_output': 1})
+
+		critic_gan_output = critic_gan_model(shared_output)
+
+		shared_model2 = keras.models.Model(inputs=state_input, outputs=[actor_output, critic_gan_output])
+		shared_model2.compile(optimizer=rms_optim,
+							 loss={'act_output': 'categorical_crossentropy',
+								   'crit_gan_output': 'mean_squared_error',
+								    '' : ''},
+							 loss_weights={'act_output': 1., 'crit_output': 1})
+
+		self.environment_actor_critic = shared_model1
+		self.adversarial_actor_critic = shared_model2
+
 
 	def build_discriminator(self, discriminator_lr):
 		model = Sequential()
-		fc1 = Dense(80, input_shape=(self.state_dimension + self.num_actions ,), activation='relu',
-					kernel_initializer=VarianceScaling(scale=0.5,mode='fan_avg',
+		fc1 = Dense(80, input_shape=(self.state_dimension + self.num_actions,), activation='relu',
+					kernel_initializer=VarianceScaling(scale=0.5, mode='fan_avg',
 													   distribution='normal'))
 		fc2 = Dense(50, activation='relu',
-					kernel_initializer=VarianceScaling(scale=0.5,mode='fan_avg',
+					kernel_initializer=VarianceScaling(scale=0.5, mode='fan_avg',
 													   distribution='normal'))
 		fc3 = Dense(1, activation='sigmoid',
-					kernel_initializer=VarianceScaling(scale=0.5,mode='fan_avg',
+					kernel_initializer=VarianceScaling(scale=0.5, mode='fan_avg',
 													   distribution='normal'))
 		model.add(fc1)
 		# model.add(Dropout(self.dropout))
-		#model.add(fc2)
+		# model.add(fc2)
 		model.add(fc3)
-		model.compile(optimizer=rms_optim , loss='binary_crossentropy', metrics=['accuracy'])
+		model.compile(optimizer=rms_optim, loss='binary_crossentropy', metrics=['accuracy'])
 		self.discriminator = model
 
 	def initialize_episode(self):
@@ -296,7 +302,7 @@ class AgentAdverserialA2C(Agent):
 
 	def get_epsilon(self, update_counter):
 		eps_threshold = 0
-                if self.eps_strat == 'linear_decay':
+		if self.eps_strat == 'linear_decay':
 			eps_threshold = self.eps_start + (self.eps_end - self.eps_start) * min((update_counter / self.eps_decay), 1)
 		elif self.eps_strat == 'exp_decay':
 			eps_decay = self.eps_decay / 100
@@ -311,20 +317,17 @@ class AgentAdverserialA2C(Agent):
 		""" A2C: Input state, output action """
 		representation = self.prepare_state_representation(state)
 		representation = np.expand_dims(np.asarray(representation), axis=0)
-		self.action = self.actor_model.predict(representation)
+		self.action, _ = self.environment_actor_critic.predict(representation)
 		self.action = self.action.squeeze(0)
 
-		if self.test_time:
-			idx = np.argmax(self.action)
+		if self.eps_fixed == True:
+			idx = np.random.choice(self.num_actions, 1, p=self.action)[0]
 		else:
-			if self.eps_fixed == True:
-				idx = np.random.choice(self.num_actions, 1, p=self.action)[0]
+			# epsilon greedy with the epsilon declining  from 0.95 to 0
+			if random.random() <= self.epsilon:
+				idx = random.randint(0, self.num_actions - 1)
 			else:
-				# epsilon greedy with the epsilon declining  from 0.95 to 0
-				if random.random() <= self.epsilon:
-					idx = random.randint(0, self.num_actions - 1)
-				else:
-					idx = np.argmax(self.action)
+				idx = np.argmax(self.action)
 
 		act_slot_response = copy.deepcopy(
 			self.feasible_actions[idx])
@@ -339,8 +342,7 @@ class AgentAdverserialA2C(Agent):
 		raise Exception("action index not found")
 		return None
 
-
-	def get_advantage(self, states, rewards, is_adversary = False):
+	def get_advantage(self, states, rewards, is_adversary=False):
 		T = len(rewards)
 		v_end = np.zeros(T)
 		gain = np.zeros(T)
@@ -351,22 +353,22 @@ class AgentAdverserialA2C(Agent):
 				v_end[t] = 0
 			else:
 				if is_adversary:
-					v_end[t] = self.adversarial_critic_model.predict(
-						np.asarray([states[t + self.n]]))[0]
+					v_end[t] = self.adversarial_actor_critic.predict(
+						np.asarray([states[t + self.n]]))[1][0][0]
 				else:
-					v_end[t] = self.critic_model.predict(
-						np.asarray([states[t + self.n]]))[0]
+					v_end[t] = self.environment_actor_critic.predict(
+						np.asarray([states[t + self.n]]))[1][0][0]
 			gain[t] = self.gamma ** self.n * v_end[t] + \
 					  sum([(self.gamma ** k) * rewards[t + k] \
 							   if t + k < T \
 							   else self.gamma ** k * 0 \
 						   for k in range(self.n)])
 			if is_adversary:
-				advantage[t] = gain[t] - self.adversarial_critic_model.predict(np.asarray(
-					[states[t]]))[0]
+				advantage[t] = gain[t] - self.adversarial_actor_critic.predict(np.asarray(
+					[states[t]]))[1][0][0]
 			else:
-				advantage[t] = gain[t] - self.critic_model.predict(np.asarray(
-					[states[t]]))[0]
+				advantage[t] = gain[t] - self.environment_actor_critic.predict(np.asarray(
+					[states[t]]))[1][0][0]
 		return advantage, gain
 
 	def generate_expert_episode(self):
@@ -381,7 +383,7 @@ class AgentAdverserialA2C(Agent):
 			states = []
 			rewards = []
 			actions = []
-			self.manager.initialize_episode() ## turn count of state_tracker set to 0
+			self.manager.initialize_episode()  ## turn count of state_tracker set to 0
 			try:
 				while (not done):
 					########################################################################
@@ -396,7 +398,7 @@ class AgentAdverserialA2C(Agent):
 					act_slot_response = copy.deepcopy(self.feasible_actions[action])
 					agent_action = {'act_slot_response': act_slot_response, 'act_slot_value_response': None}
 					## update agent state and action in the dialogue manager for it to update user action and next state
-					temp  = self.manager.register_agent_action(state, agent_action, record_training_data=False)
+					temp = self.manager.register_agent_action(state, agent_action, record_training_data=False)
 					done = temp[0]
 					reward = temp[1]
 					cumulative_reward += temp[1]
@@ -416,12 +418,10 @@ class AgentAdverserialA2C(Agent):
 				continue
 		return states, actions, rewards
 
-
 	def train(self, states, actions, rewards, indexes, update_counter, gamma=0.99):
 
 		self.epsilon = self.get_epsilon(update_counter)
 		print("Epsilon: {0}".format(self.epsilon))
-
 
 		states = [self.prepare_state_representation(x) for x in states]
 		advantage, gains = self.get_advantage(states, rewards)
@@ -429,47 +429,43 @@ class AgentAdverserialA2C(Agent):
 		advantage = advantage.reshape(-1, 1)
 		actions = np.asarray(actions)
 
-		targets = advantage #* actions
-		act_target = np.zeros((len(states),self.num_actions))
+		targets = advantage  # * actions
+		act_target = np.zeros((len(states), self.num_actions))
 		act_target[np.arange(len(states)), np.array(indexes)] \
-									= targets.squeeze(1)
+			= targets.squeeze(1)
 		states = np.asarray(states)
-		#TODO: Check if we want to scale rewards
+		# TODO: Check if we want to scale rewards
 		rewards = np.asarray(rewards)
 		tot_rewards = np.sum(rewards)
 
-		if update_counter % 1 == 0:
-			actor_loss = self.actor_model.train_on_batch(states, act_target)
-			print("Actor Loss:{0:4f}".format(actor_loss))
-		critic_loss = self.critic_model.train_on_batch(states, gains)
-		print("Critic Loss:{0:4f}".format(critic_loss))
+		self.environment_actor_critic.train_on_batch(states, {'act_output': act_target, 'crit_output': gains})
 
 		## sample from an expert episode and the current simulated episode
 		## in Goodfellow's original paper, he does it k times
-                expert_set = []
-                simulation_set = []
-                for k in range(32):
-                    expert_states, expert_actions, expert_rewards = self.generate_expert_episode()
-                    sampled_expert_index = np.random.randint(0, len(expert_states))
-                    one_hot_expert_action = np.zeros((1, self.num_actions))
-                    one_hot_expert_action[:, expert_actions[sampled_expert_index]] = 1
-                    sampled_expert_state = np.array(expert_states[sampled_expert_index])
-                    sampled_expert_state = np.expand_dims(sampled_expert_state, 0)
-                    
-                    sampled_expert_example = np.concatenate((sampled_expert_state, one_hot_expert_action), axis=1)
-                    expert_set.append(sampled_expert_example)
+		expert_set = []
+		simulation_set = []
+		for k in range(32):
+			expert_states, expert_actions, expert_rewards = self.generate_expert_episode()
+			sampled_expert_index = np.random.randint(0, len(expert_states))
+			one_hot_expert_action = np.zeros((1, self.num_actions))
+			one_hot_expert_action[:, expert_actions[sampled_expert_index]] = 1
+			sampled_expert_state = np.array(expert_states[sampled_expert_index])
+			sampled_expert_state = np.expand_dims(sampled_expert_state, 0)
 
-                    sampled_simulated_index = np.random.randint(0, len(states))
-                    one_hot_simulated_action = np.zeros((1, self.num_actions))
-                    one_hot_simulated_action[:, indexes[sampled_simulated_index]] = 1
-                    sampled_simulated_state = states[sampled_simulated_index]
-                    sampled_simulated_state = np.expand_dims(sampled_simulated_state, 0)
-                    sampled_simulated_example = np.concatenate((sampled_simulated_state, one_hot_simulated_action), axis=1)
-                    simulation_set.append(sampled_simulated_example)
-                expert_set = np.asarray(expert_set)
-                simulation_set = np.asarray(simulation_set)
-                expert_labels = np.ones((32, 1))
-                simulation_labels = np.zeros((32, 0))
+			sampled_expert_example = np.concatenate((sampled_expert_state, one_hot_expert_action), axis=1)
+			expert_set.append(sampled_expert_example)
+
+			sampled_simulated_index = np.random.randint(0, len(states))
+			one_hot_simulated_action = np.zeros((1, self.num_actions))
+			one_hot_simulated_action[:, indexes[sampled_simulated_index]] = 1
+			sampled_simulated_state = states[sampled_simulated_index]
+			sampled_simulated_state = np.expand_dims(sampled_simulated_state, 0)
+			sampled_simulated_example = np.concatenate((sampled_simulated_state, one_hot_simulated_action), axis=1)
+			simulation_set.append(sampled_simulated_example)
+		expert_set = np.asarray(expert_set)
+		simulation_set = np.asarray(simulation_set)
+		expert_labels = np.ones((32, 1))
+		simulation_labels = np.zeros((32, 0))
 		## train discriminator
 		if update_counter % 1 == 0:
 			d_loss_real = self.discriminator.train_on_batch(expert_set, expert_labels)
@@ -486,7 +482,7 @@ class AgentAdverserialA2C(Agent):
 			concat_s_a = np.concatenate((s, one_hot))
 			state_action_pairs.append(concat_s_a)
 		probability_simulation = self.discriminator.predict(np.array(state_action_pairs))
-                probability_simulation = np.clip(probability_simulation, 10**-5, 1-10**-5)
+		probability_simulation = np.clip(probability_simulation, 10 ** -5, 1 - 10 ** -5)
 		gan_rewards = (-np.log(1 - probability_simulation)).flatten().tolist()
 
 		''' Train gan actor-critic network '''
@@ -498,13 +494,7 @@ class AgentAdverserialA2C(Agent):
 		gan_act_target[np.arange(len(states)), np.array(indexes)] \
 			= gan_targets.squeeze(1)
 
-		if update_counter % 1 == 0:
-			gan_actor_loss = self.actor_model.train_on_batch(states, gan_act_target)
-			print("Gan Actor Loss:{0:4f}".format(gan_actor_loss))
-
-		gan_critic_loss = self.critic_model.train_on_batch(states, gains)
-		print("Gan Critic Loss:{0:4f}".format(gan_critic_loss))
-
+		self.adversarial_actor_critic.train_on_batch(states, {'act_output': gan_act_target, 'crit_output': gan_gains})
 		return tot_rewards
 
 	def evaluate(self, env, episode, num_episodes=100, render=False):
