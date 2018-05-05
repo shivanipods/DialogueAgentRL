@@ -15,6 +15,7 @@ from keras.initializers import VarianceScaling
 from keras.models import Sequential, Model
 from keras.layers import Dense, Input, Dropout
 from keras.optimizers import Adam
+from keras.optimizers import RMSprop
 from keras import regularizers
 import ipdb
 from constants import *
@@ -30,7 +31,7 @@ import matplotlib.pyplot as plt
 sess = tf.Session(config=tf.ConfigProto(log_device_placement=True,
                                         allow_soft_placement=True))
 keras.backend.set_session(sess)
-
+rms_optim = RMSprop(lr=0.001, rho=0.999, epsilon=10 ** -8, clipvalue=10 ** -3)
 def one_hot(action, categories=4):
     x = np.zeros(categories)
     x[action] = 1
@@ -107,40 +108,40 @@ class AgentA2C(Agent):
 
     def build_actor_model(self):
         model = Sequential()
-        fc1 = Dense(130, input_shape=(self.state_dimension,), activation='relu',
+        fc1 = Dense(80, input_shape=(self.state_dimension,), activation='relu',
                     kernel_initializer=VarianceScaling(mode='fan_avg',
                                                        distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
-        fc2 = Dense(50, activation='relu',
-                    kernel_initializer=VarianceScaling(mode='fan_avg',
-                                                       distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
+        #fc2 = Dense(50, activation='relu',
+        #            kernel_initializer=VarianceScaling(mode='fan_avg',
+        #                                               distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
         fc3 = Dense(self.num_actions, activation='softmax',
                     kernel_initializer=VarianceScaling(mode='fan_avg',
                                                        distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
         model.add(fc1)
-        model.add(Dropout(self.dropout))
-        model.add(fc2)
-        model.add(Dropout(self.dropout))
+        #model.add(Dropout(self.dropout))
+        #model.add(fc2)
+        #model.add(Dropout(self.dropout))
         model.add(fc3)
-        model.compile(loss='mse', optimizer=Adam(lr=self.actor_lr))
+        model.compile(loss='mse', optimizer=rms_optim)
         self.actor_model = model
 
     def build_critic_model(self):
         model = Sequential()
-        fc1 = Dense(130, input_shape=(self.state_dimension,), activation='relu',
+        fc1 = Dense(80, input_shape=(self.state_dimension,), activation='relu',
                     kernel_initializer=VarianceScaling(mode='fan_avg',
                                                        distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
-        fc2 = Dense(50, activation='relu',
-                    kernel_initializer=VarianceScaling(mode='fan_avg',
-                                                       distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
+        #fc2 = Dense(50, activation='relu',
+        #            kernel_initializer=VarianceScaling(mode='fan_avg',
+        #                                               distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
         fc3 = Dense(1, activation='linear',
                     kernel_initializer=VarianceScaling(mode='fan_avg',
                                                        distribution='normal'), kernel_regularizer=regularizers.l2(self.reg_cost))
         model.add(fc1)
-        model.add(Dropout(self.dropout))
-        model.add(fc2)
-        model.add(Dropout(self.dropout))
+        #model.add(Dropout(self.dropout))
+        #model.add(fc2)
+        #model.add(Dropout(self.dropout))
         model.add(fc3)
-        model.compile(loss='mse', optimizer=Adam(lr=self.critic_lr))
+        model.compile(loss='mse', optimizer=rms_optim)
         self.critic_model = model
 
     def initialize_episode(self):

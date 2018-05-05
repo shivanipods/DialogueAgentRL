@@ -346,7 +346,7 @@ class AgentAdverserialA2C(Agent):
 		gain = np.zeros(T)
 		advantage = np.zeros(T)
 		# states = [self.prepare_state_representation(x) for x in states]
-		for t in reversed(range(len(rewards) - 1)):
+		for t in reversed(range(len(rewards))):
 			if t + self.n >= T:
 				v_end[t] = 0
 			else:
@@ -457,7 +457,9 @@ class AgentAdverserialA2C(Agent):
                     sampled_expert_state = np.expand_dims(sampled_expert_state, 0)
                     
                     sampled_expert_example = np.concatenate((sampled_expert_state, one_hot_expert_action), axis=1)
-                    expert_set.append(sampled_expert_example)
+                    
+		    sampled_expert_example = np.squeeze(sampled_expert_example, 0)
+		    expert_set.append(sampled_expert_example)
 
                     sampled_simulated_index = np.random.randint(0, len(states))
                     one_hot_simulated_action = np.zeros((1, self.num_actions))
@@ -465,11 +467,12 @@ class AgentAdverserialA2C(Agent):
                     sampled_simulated_state = states[sampled_simulated_index]
                     sampled_simulated_state = np.expand_dims(sampled_simulated_state, 0)
                     sampled_simulated_example = np.concatenate((sampled_simulated_state, one_hot_simulated_action), axis=1)
-                    simulation_set.append(sampled_simulated_example)
+                    sampled_simulated_example = np.squeeze(sampled_simulated_example, 0)
+		    simulation_set.append(sampled_simulated_example)
                 expert_set = np.asarray(expert_set)
                 simulation_set = np.asarray(simulation_set)
                 expert_labels = np.ones((32, 1))
-                simulation_labels = np.zeros((32, 0))
+                simulation_labels = np.zeros((32, 1))
 		## train discriminator
 		if update_counter % 1 == 0:
 			d_loss_real = self.discriminator.train_on_batch(expert_set, expert_labels)
