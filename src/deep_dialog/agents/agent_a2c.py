@@ -289,7 +289,7 @@ class AgentA2C(Agent):
         gain = np.zeros(T)
         advantage = np.zeros(T)
         # states = [self.prepare_state_representation(x) for x in states]
-        for t in reversed(range(len(rewards) - 1)):
+        for t in reversed(range(len(rewards))):
             if t + self.n >= T:
                 v_end[t] = 0
             else:

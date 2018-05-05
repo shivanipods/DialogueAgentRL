@@ -18,6 +18,6 @@ python run.py --agt 15 --usr 1 --max_turn 40 \
           --is_a2c \
           --lrate 0.001 \
           --critw 2.0 \
-          --n 10 \
+          --n 1 \
           --gamma 0.9 \
-          --a2c_hidden_size 50 \
+          --a2c_hidden_size 80 \

@@ -19,5 +19,5 @@ CUDA_VISIBLE_DEVICES=0 python run.py --agt 13 --usr 1 --max_turn 40 \
           --freeze 1 \
           --is_a2c \
           --eps_strat exp_decay \
-          --critic_lr 0.0001 \
-          --actor_lr 0.0001
+          --critic_lr 0.001 \
+          --actor_lr 0.001

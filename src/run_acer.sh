@@ -16,8 +16,8 @@ python -u run.py --agt 16 \
         --goal_file_path ./deep_dialog/data/user_goals_first_turn_template.part.movie.v1.p \
         --warm_start 1 \
         --warm_start_epochs 200 \
-        --gamma 0.99 \
-        --lrate 0.005 \
+        --gamma 0.9 \
+        --lrate 0.001 \
         --is_a2c \
         --save_check_point 200 \
         --eps_fixed
