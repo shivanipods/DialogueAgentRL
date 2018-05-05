@@ -16,8 +16,8 @@ python run.py --agt 15 --usr 1 --max_turn 40 \
           --cmd_input_mode 0 \
           --save_check_point 500 \
           --is_a2c \
-          --lrate 0.0005 \
+          --lrate 0.001 \
           --critw 2.0 \
-          --n 50 \
+          --n 10 \
           --gamma 0.9 \
           --a2c_hidden_size 50 \

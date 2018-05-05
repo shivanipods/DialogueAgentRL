@@ -15,6 +15,7 @@ from keras.initializers import VarianceScaling
 from keras.models import Sequential, Model
 from keras.layers import Dense, Input, Lambda
 from keras.optimizers import Adam
+from keras.optimizers import RMSprop
 from keras import regularizers
 import ipdb
 from constants import *
@@ -30,7 +31,7 @@ import matplotlib.pyplot as plt
 sess = tf.Session(config=tf.ConfigProto(log_device_placement=True,
                                         allow_soft_placement=True))
 keras.backend.set_session(sess)
-
+rms_optim = RMSprop(lr=0.001, rho=0.999, epsilon=10 ** -8, clipvalue=10 ** -3)
 def one_hot(action, categories=4):
     x = np.zeros(categories)
     x[action] = 1
@@ -117,7 +118,7 @@ class AgentSharedA2C(Agent):
         critic_output = critic_model(shared_output)
         
         shared_model = keras.models.Model(inputs=state_input, outputs=[actor_output, critic_output])
-        shared_model.compile(optimizer=Adam(lr=self.lrate),
+        shared_model.compile(optimizer=rms_optim,
               loss={'act_output': 'categorical_crossentropy', 'crit_output': 'mean_squared_error'},
               loss_weights={'act_output': 1., 'crit_output': self.critw})
         
