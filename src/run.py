@@ -467,6 +467,7 @@ def simulation_epoch(simulation_epoch_size):
         episode_reward = 0
         #ipdb.set_trace()
         while(not episode_over):
+            states.append(dialog_manager.state)
             temp, idx, act = dialog_manager.next_turn()
             episode_over = temp[0]
             reward = temp[1]
@@ -480,7 +481,6 @@ def simulation_epoch(simulation_epoch_size):
                 cumulative_turns += dialog_manager.state_tracker.turn_count
                 cumulative_turn_list.append(dialog_manager.state_tracker.turn_count)
                 cumulative_reward_list.append(episode_reward)
-            states.append(dialog_manager.state)
             rewards.append(reward)
             actions.append(act)
             indexes.append(idx)
