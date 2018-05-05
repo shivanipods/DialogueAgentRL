@@ -14,7 +14,7 @@ import keras
 from keras.initializers import VarianceScaling
 from keras.models import Sequential, Model
 from keras.layers import Dense, Input, Lambda
-from keras.optimizers import Adam
+from keras.optimizers import Adam, RMSprop
 from collections import namedtuple
 from keras import regularizers
 import ipdb
@@ -31,7 +31,7 @@ import matplotlib.pyplot as plt
 sess = tf.Session(config=tf.ConfigProto(log_device_placement=True,
                                         allow_soft_placement=True))
 keras.backend.set_session(sess)
-
+rms_optim = RMSprop(lr=0.001, rho=0.999, epsilon=10 ** -8, clipvalue=10 ** -3)
 def one_hot(action, categories=4):
     x = np.zeros(categories)
     x[action] = 1
@@ -141,7 +141,7 @@ class AgentACER(Agent):
         model.add(fc1)
         model.add(fc2)
         model.add(fc3)
-        model.compile(loss='mse', optimizer=Adam(lr=self.actor_lr))
+        model.compile(loss='mse', optimizer=rms_optim)
         self.actor_model = model
 
     def build_critic_model(self):
@@ -158,7 +158,7 @@ class AgentACER(Agent):
         model.add(fc1)
         model.add(fc2)
         model.add(fc3)
-        model.compile(loss='mse', optimizer=Adam(lr=self.critic_lr))
+        model.compile(loss='mse', optimizer=rms_optim)
         self.critic_model = model
 
     def build_common_model(self):
@@ -186,7 +186,7 @@ class AgentACER(Agent):
         critic_output = self.critic_model(shared_output)
 
         model = keras.models.Model(inputs=state_input, outputs=[actor_output, critic_output])
-        optimizer_ = Adam(lr=self.lrate)
+        optimizer_ = rms_optim
         model.compile(optimizer=optimizer_,
                            loss={'act_output': 'categorical_crossentropy', 'crit_output': 'mean_squared_error'},
                            loss_weights={'act_output': 1, 'crit_output': 1})
@@ -391,7 +391,7 @@ class AgentACER(Agent):
             importances = np.zeros(len(rewards))
             gains = np.zeros(len(rewards)) ## recompute q-function for same state representation and replace action values with gains
 
-            for t in reversed(range(len(rewards) - 1)):
+            for t in reversed(range(len(rewards))):
                 state_representation = np.expand_dims(np.asarray(states[t]), axis=0)
                 actor_values, q_values = self.ac_model.predict(state_representation)
 
