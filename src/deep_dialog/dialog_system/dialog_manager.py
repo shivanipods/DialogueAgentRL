@@ -66,13 +66,20 @@ class DialogManager:
         self.sys_action = self.state_tracker.dialog_history_dictionaries()[-1]
         self.user_action, self.episode_over, dialog_status = self.user.next(self.sys_action)
         if self.reward_function_use == Reward.NORMAL:
+            print "Running Normal Reward..."
             self.reward = self.reward_function(dialog_status)
         elif self.reward_function_use == Reward.A2C:
+            print "Running A2C Reward..."
             self.reward = self.reward_function_a2c(dialog_status)
         elif self.reward_function_use == Reward.PAPER:
+            print "Running Paper Implementation Reward..."
             self.reward = self.reward_function_paper(dialog_status)
         elif self.reward_function_use == Reward.NO_PENALTY:
+            print "Running Paper No Penalty Reward..."
             self.reward = self.reward_function_without_penalty(dialog_status)
+        elif self.reward_function_use == Reward.LEXICAL:
+            print "Running LEXICAL Reward..."
+            self.reward = self.reward_function_lexical(dialog_status)
 
         ########################################################################
         #   Update state tracker with latest user action
