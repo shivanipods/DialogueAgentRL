@@ -31,7 +31,8 @@ import matplotlib.pyplot as plt
 sess = tf.Session(config=tf.ConfigProto(log_device_placement=True,
                                         allow_soft_placement=True))
 keras.backend.set_session(sess)
-rms_optim = RMSprop(lr=0.001, rho=0.999, epsilon=10 ** -8, clipvalue=10 ** -3)
+# rms_optim = RMSprop(lr=0.001, rho=0.999, epsilon=10 ** -8, clipvalue=10 ** -3)
+rms_optim = Adam(lr=0.001)
 def one_hot(action, categories=4):
     x = np.zeros(categories)
     x[action] = 1
@@ -118,7 +119,7 @@ class AgentSharedA2C(Agent):
         critic_output = critic_model(shared_output)
         
         shared_model = keras.models.Model(inputs=state_input, outputs=[actor_output, critic_output])
-        shared_model.compile(optimizer=rms_optim,
+        shared_model.compile(optimizer=Adam(self.lrate),
               loss={'act_output': 'categorical_crossentropy', 'crit_output': 'mean_squared_error'},
               loss_weights={'act_output': 1., 'crit_output': self.critw})
         
@@ -283,6 +284,33 @@ class AgentSharedA2C(Agent):
             advantage[t] = gain[t] - self.shared_model.predict(np.asarray([states[t]]))[1][0][0]
         return advantage, gain
 
+    def truncated_discounted_rewards(self, rewards):
+        batch_size = len(rewards) - self.n
+        truncated_rewards = np.zeros(batch_size)
+        for t in range(batch_size):
+            cumulative = 0
+            for i in range(0, self.n):
+                cumulative += math.pow(self.gamma, i) * rewards[t + i]
+            truncated_rewards[t] = cumulative
+        return truncated_rewards
+
+    def get_value_reward(self, states, rewards, values):
+        extended_values = np.concatenate((values.squeeze(1), np.zeros(self.n)))
+        extended_rewards = rewards + [0] * self.n
+        truncated_discounted_rewards = self.truncated_discounted_rewards(extended_rewards)
+        batch_size = len(rewards)
+        discounted_rewards = np.zeros(len(rewards))
+        for t in reversed(range(batch_size)):
+            discounted_rewards[t] = (self.gamma ** self.n) * extended_values[t + self.n] + \
+                                    truncated_discounted_rewards[t]
+        return discounted_rewards
+
+    def get_advantage1(self, states, rewards):
+        _, values = self.shared_model.predict(np.asarray(states))
+        discounted_rewards = self.get_value_reward(states, rewards, values)
+        targets = discounted_rewards - values.squeeze(1)
+        return targets, discounted_rewards
+
     def train(self, states, actions, rewards, indexes, update_counter, gamma=0.99):
 
         self.epsilon = self.get_epsilon(update_counter)
@@ -305,7 +333,10 @@ class AgentSharedA2C(Agent):
         rewards = np.asarray(rewards)
         tot_rewards = np.sum(rewards)
         
-        self.shared_model.train_on_batch(states, {'act_output': act_target,'crit_output': gains})
+        actor_loss, critic_loss  = self.shared_model.train_on_batch(states, {'act_output': act_target,'crit_output': gains})
+
+        print("Actor Loss:{0:4f}".format(actor_loss))
+        print("Critic Loss:{0:4f}".format(critic_loss))
         return tot_rewards
 
     def evaluate(self, env, episode, num_episodes=100, render=False):

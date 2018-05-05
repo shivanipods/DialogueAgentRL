@@ -343,13 +343,12 @@ class AgentA2C(Agent):
 
         states = [self.prepare_state_representation(x) for x in states]
         ## range for rewards in dialogue is reduced
-        advantage, gains, values = self.get_advantage(states, rewards)
-        advantage1, gains1, values1 = self.get_advantage1(states, rewards)
+        # advantage, gains, values = self.get_advantage(states, rewards)
+        advantage, gains, values = self.get_advantage1(states, rewards)
         advantage = advantage.reshape(-1, 1)
         actions = np.asarray(actions)
 
         # L(\theta) from the handout
-
 
         targets = advantage  # * actions
         act_target = np.zeros((len(states), self.num_actions))
