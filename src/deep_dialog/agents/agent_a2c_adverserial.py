@@ -66,7 +66,7 @@ class AgentAdverserialA2C(Agent):
 		self.eps_end = params.get('eps_end', 0)
 		self.eps_decay = params.get('eps_decay', 1e3)
 
-		self.hidden_size = params.get('dqn_hidden_size', 60)
+		self.hidden_size = params.get('dqn_hidden_size', 80)
 		self.gamma = params.get('gamma', 0.99)
 		self.predict_mode = params.get('predict_mode', False)
 		self.actor_lr = params.get('actor_lr', 0.0005)
@@ -290,7 +290,8 @@ class AgentAdverserialA2C(Agent):
 		return self.final_representation
 
 	def get_epsilon(self, update_counter):
-		if self.eps_strat == 'linear_decay':
+		eps_threshold = 0
+                if self.eps_strat == 'linear_decay':
 			eps_threshold = self.eps_start + (self.eps_end - self.eps_start) * min((update_counter / self.eps_decay), 1)
 		elif self.eps_strat == 'exp_decay':
 			eps_decay = self.eps_decay / 100
