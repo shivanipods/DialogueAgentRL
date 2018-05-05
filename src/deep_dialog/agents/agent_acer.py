@@ -391,7 +391,7 @@ class AgentACER(Agent):
             importances = np.zeros(len(rewards))
             gains = np.zeros(len(rewards)) ## recompute q-function for same state representation and replace action values with gains
 
-            for t in reversed(range(len(rewards) - 1)):
+            for t in reversed(range(len(rewards))):
                 state_representation = np.expand_dims(np.asarray(states[t]), axis=0)
                 actor_values, q_values = self.ac_model.predict(state_representation)
 
