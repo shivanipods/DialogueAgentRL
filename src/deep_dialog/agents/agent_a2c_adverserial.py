@@ -13,7 +13,7 @@ import keras
 from keras.initializers import VarianceScaling
 from keras.models import Sequential, Model
 from keras import regularizers
-from keras.layers import Dense, Input, Lambda
+from keras.layers import Dense, Input, Lambda, Dropout
 from keras.optimizers import Adam
 from constants import *
 import random
@@ -76,9 +76,12 @@ class AgentAdverserialA2C(Agent):
 		self.discriminator_batch_size = params.get('discriminator_batch_size', 1)
 		self.expert_path = params["expert_path"]
 
-		## warm start:
-		## there is no warm start since there are is no experience replay
-		# self.warm_start = params.get('warm_start', 0)
+		## freezing actor
+		self.freeze = params.get('freeze', 5)
+
+		## dropout
+		self.dropout = params.get('dropout', 0.2)
+
 
 		self.max_turn = params['max_turn'] + 4
 		self.state_dimension = 2 * self.act_cardinality + 7 * self.slot_cardinality + 3 + self.max_turn
@@ -189,6 +192,7 @@ class AgentAdverserialA2C(Agent):
 					kernel_initializer=VarianceScaling(mode='fan_avg',
 													   distribution='normal'))
 		model.add(fc1)
+		# model.add(Dropout(self.dropout))
 		model.add(fc2)
 		model.add(fc3)
 		model.compile(optimizer=Adam(lr=self.discriminator_lr) , loss='binary_crossentropy', metrics=['accuracy'])
